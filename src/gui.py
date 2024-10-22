@@ -8,9 +8,11 @@ class Window(tk.Tk):
         self.title(name)
         self.key_press_listeners = []
         self.key_release_listeners = []
-        self.bind("<KeyPress>", self.key_press_event)
-        self.bind("<KeyRelease>", self.key_release_event)
+        self.configure_listeners = []
+        self.bind("<KeyPress>", self.__key_press_event)
+        self.bind("<KeyRelease>", self.__key_release_event)
         self.protocol("WM_DELETE_WINDOW", self.end)
+        self.bind("<Configure>", self.__configure_event)
         self.running = False
 
     def add_key_listener(self, listener):
@@ -18,6 +20,9 @@ class Window(tk.Tk):
 
     def add_key_release_listener(self, listener):
         self.key_release_listeners.append(listener)
+
+    def add_configure_listener(self, listener):
+        self.add_configure_listener(listener)
 
     def __key_press_event(self, event):
         self.key_press_event(event)
@@ -29,10 +34,18 @@ class Window(tk.Tk):
         for listener in self.key_release_listeners:
             listener(event)
 
+    def __configure_event(self, event):
+        self.configure_event(event)
+        for listener in self.configure_listeners:
+            listener(event)
+
     def key_press_event(self, event):
         pass
 
     def key_release_event(self, event):
+        pass
+
+    def configure_event(self, event):
         pass
 
     def begin(self):
