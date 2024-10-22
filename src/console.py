@@ -1,31 +1,38 @@
-import tkinter as tk
-from tkinter import font
+from src.gui import *
 
 def tk_fixed_font_size(font_size):
-    tkfixedfont = font.nametofont("TkFixedFont")
-    tkfixedfont.configure(size=20)
+    tk_fixed_font = font.nametofont("TkFixedFont")
+    tk_fixed_font.configure(size=font_size)
 
-class Console:
+class Console(Window):
     def __init__(self, width, height, x, y, font_size):
-        self.__root = tk.Tk()
+        super().__init__(x, y, width, height, "Console window")
         tk_fixed_font_size(font_size)
 
-        self.__stdout = tk.StringVar()
-        self.__stdin  = tk.StringVar()
+        self.__stdout = Text(self, bg="black", fg="white", font_name="TkFixedFont")
+        self.__stdin = Input(self, bg="black", fg="white", font_name="TkFixedFont")
 
-        self.__tk_stdout = tk.Label(self.__root,
-                                    textvariable=self.__stdout,
-                                    bg="black", fg="white", font="TkFixedFont")
-        self.__tk_stdin  = tk.Entry(self.__root,
-                                    textvariable=self.__stdin,
-                                    bg="black", fg="white", font="TkFixedFont")
-
-        self.__tk_stdin.pack(side=tk.BOTTOM, fill=tk.X)
-        self.__tk_stdout.pack(fill=tk.BOTH, expand=tk.TRUE)
+        self.__stdin.pack(side=tk.BOTTOM, fill=tk.X)
+        self.__stdout.pack(fill=tk.BOTH, expand=tk.TRUE)
 
         self.__running = True
 
+    def key_release_event(self, event):
+        if event.char == '\r':
+            self.return_event()
+
+    def return_event(self):
+        stdin = self.__stdin.get_display()
+        self.__stdin.set_display("")
+        self.stdout_a("You said: " + stdin)
+
+    def stdout_a(self, output):
+        display = self.__stdout.get_display()
+        display += output + "\n"
+        self.__stdout.set_display(display)
+
+    def stdout_w(self, output):
+        self.__stdout.set_display(output)
+
     def main(self):
-        while self.__running:
-            self.__root.update()
-            self.__root.update_idletasks()
+        pass
