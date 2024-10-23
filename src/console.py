@@ -43,7 +43,7 @@ class Console(Window):
         self.__stdout.set_display(output)
 
     def get_width_chars(self):
-        return self.__stdout.winfo_width() // tk_get_fixed_font_width()
+        return self.__stdout.winfo_width() // tk_get_fixed_font_width() - 1
 
     def get_height_chars(self):
         return self.__stdout.winfo_height() // tk_get_fixed_font_height()
