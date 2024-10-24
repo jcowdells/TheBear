@@ -10,6 +10,7 @@ class Point:
     @x.setter
     def x(self, value):
         self.__x = value
+        self.__update_rotated_point(force=True)
 
     @property
     def y(self):
@@ -19,6 +20,7 @@ class Point:
     @y.setter
     def y(self, value):
         self.__y = value
+        self.__update_rotated_point(force=True)
 
     def __init__(self, x, y):
         self.__x = x
@@ -34,8 +36,13 @@ class Point:
         self.__prev_rotation = 0
         self.__prev_rotation_centre = None
 
-    def __update_rotated_point(self):
-        if self.rotation != self.__prev_rotation or self.rotation_centre != self.__prev_rotation_centre:
+    def __update_rotated_point(self, force=False):
+        if self.rotation != self.__prev_rotation or self.rotation_centre != self.__prev_rotation_centre or force:
+            if self.rotation_centre is None:
+                self.__rx = self.__x
+                self.__ry = self.__y
+                return
+
             c_x = self.__x - self.rotation_centre.x
             c_y = self.__y - self.rotation_centre.y
             r_x = c_x * math.cos(self.rotation) - c_y * math.sin(self.rotation)
@@ -53,6 +60,9 @@ class Point:
         if other is None:
             return False
         return self.x == other.x and self.y == other.y
+
+    def __str__(self):
+        return f"({self.x}, {self.y})"
 
 class AccessorRegion(Enum):
     X = auto()

@@ -1,10 +1,17 @@
 import random
-from argparse import ArgumentError
-
-from pyatspi import pointToList
 
 from src.console import Console
 from src.geometry import *
+
+def triangle_signed_area(point_a, point_b, point_c):
+    return (point_b.x - point_a.x) * (point_c.y - point_a.y) - (point_b.y - point_a.y) * (point_c.x - point_a.x)
+
+def triangle_uv(a, b, c, f):
+    signed_area = triangle_signed_area(a, b, c)
+    area = 2 * signed_area
+    u = 1 / area * (a.y * c.x - a.x * c.y + (c.y - a.y) * f.x + (a.x - c.x) * f.y)
+    v = 1 / area * (a.x * b.y - a.y * b.x + (a.y - b.y) * f.x + (b.x - a.x) * f.y)
+    return Point(u, v)
 
 class Image:
     def __init__(self, filepath):
@@ -35,6 +42,11 @@ class Image:
     def get_pixel(self, x, y):
         return self.__data[y * self.__width + x]
 
+    def sample(self, x, y):
+        sx = round(x * self.get_width())
+        sy = round(y * self.get_height())
+        return self.get_pixel(sx, sy)
+
 class Drawable:
     def draw(self, console_gui):
         pass
@@ -43,7 +55,7 @@ class Polygon(Drawable):
     def __init__(self, *args, fill="#"):
         len_args = len(args)
         if len_args < 3:
-            raise ArgumentError(None, "A polygon must have at least 3 vertices!")
+            raise ValueError("A polygon must have at least 3 vertices!")
         self.__points = args
         self.__lines = []
         self.__fill = fill
@@ -64,6 +76,52 @@ class Polygon(Drawable):
             point.rotation = angle
             point.rotation_centre = centre
 
+class Triangle:
+    @property
+    def __points(self):
+        return self.__point_a, self.__point_b, self.__point_c
+
+    def __init__(self, point_a, point_b, point_c):
+        self.__point_a = point_a
+        self.__point_b = point_b
+        self.__point_c = point_c
+
+    def iter_x(self):
+        for point in self.__points:
+            yield point.x
+
+    def iter_y(self):
+        for point in self.__points:
+            yield point.y
+
+    def get_bbox(self):
+        min_x = None
+        max_x = None
+        for x in self.iter_x():
+            if min_x is None or x < min_x:
+                min_x = x
+            if max_x is None or x > max_x:
+                max_x = x
+
+        min_y = None
+        max_y = None
+        for y in self.iter_y():
+            if min_y is None or y < min_y:
+                min_y = y
+            if max_y is None or y > max_y:
+                max_y = y
+
+        return Point(min_x, min_y), Point(max_x, max_y)
+
+    def contains_point(self, point_p):
+        check_a = triangle_signed_area(self.__point_a, self.__point_b, point_p)
+        check_b = triangle_signed_area(self.__point_b, self.__point_c, point_p)
+        check_c = triangle_signed_area(self.__point_c, self.__point_a, point_p)
+
+        return check_a >= 0 and check_b >= 0 and check_c >= 0
+
+    def get_uv(self, point_p):
+        return triangle_uv(*self.__points, point_p)
 
 class Buffer:
     def __init__(self, width, height):
@@ -118,14 +176,14 @@ class ConsoleGUI(Console):
     def __init__(self, width, height, x, y):
         super().__init__(width, height, x, y, 10, fg="#22BB00")
         self.buffer = Buffer(self.get_width_chars(), self.get_height_chars())
-        #self.image = Image("res/helloworld.bin")
         self.point_a = Point(10, 10)
-        self.point_b = Point(20, 10)
-        self.point_c = Point(20, 20)
-        self.point_d = Point(10, 20)
-        self.point_e = Point(5, 15)
-        self.rotation = 0
-        self.poly = Polygon(self.point_a, self.point_b, self.point_c, self.point_d, self.point_e)
+        self.point_b = Point(30, 10)
+        self.point_c = Point(0, 0)
+        self.triangle = Triangle(self.point_b, self.point_a, self.point_c)
+
+        self.count = 0
+
+        self.sampler = Image("../res/test2.bin")
 
     def configure_event(self, event):
         self.buffer.resize(self.get_width_chars(), self.get_height_chars())
@@ -134,22 +192,45 @@ class ConsoleGUI(Console):
         for x, y in line.get_points():
             self.buffer.try_set(x, y, ord(fill))
 
-    def draw_image(self, image, fill="#"):
+    def draw_image(self, image):
         for x in range(image.get_width()):
             for y in range(image.get_height()):
                 self.buffer.try_set(x, y, image.get_pixel(x, y))
+
+    def draw_triangle(self, triangle, fill="#"):
+        bbox = triangle.get_bbox()
+        min_x = bbox[0].x
+        min_y = bbox[0].y
+        max_x = bbox[1].x
+        max_y = bbox[1].y
+
+        for x in range(min_x, max_x + 1):
+            for y in range(min_y, max_y + 1):
+                if triangle.contains_point(Point(x, y)):
+                    self.buffer.try_set(x, y, ord(fill))
+
+    def draw_sampler(self, triangle, image):
+        bbox = triangle.get_bbox()
+        min_x = bbox[0].x
+        min_y = bbox[0].y
+        max_x = bbox[1].x
+        max_y = bbox[1].y
+
+        for x in range(min_x, max_x + 1):
+            for y in range(min_y, max_y + 1):
+                point = Point(x, y)
+                if triangle.contains_point(Point(x, y)):
+                    uv = triangle.get_uv(point)
+                    char = image.sample(uv.x, uv.y)
+                    self.buffer.try_set(x, y, char)
 
     def draw(self, drawable):
         drawable.draw(self)
 
     def main(self):
-        #self.draw_image(self.image)
+        self.count += 0.01
+        self.point_c.x = round(self.count)
 
-        #print(self.buffer.as_string())
-        self.rotation += 0.001
-
-        self.poly.rotate(self.rotation, Point(30, 30))
-
-        self.draw(self.poly)
+        self.draw_sampler(self.triangle, self.sampler)
         self.stdout_w(self.buffer.as_string())
         self.buffer.swap()

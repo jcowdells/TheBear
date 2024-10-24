@@ -20,6 +20,8 @@ class Console(Window):
         self.__stdout = Text(self, bg=bg, fg=fg, font_name="TkFixedFont")
         self.__stdin = Input(self, bg=bg, fg=fg, font_name="TkFixedFont")
 
+        self.prev_input = ""
+
         self.__stdin.pack(side=tk.BOTTOM, fill=tk.X)
         self.__stdout.pack(fill=tk.BOTH, expand=tk.TRUE)
 
@@ -27,12 +29,16 @@ class Console(Window):
 
     def key_release_event(self, event):
         if event.keysym == "Return":
-            self.return_event()
+            self.__return_event()
 
-    def return_event(self):
+    def __return_event(self):
         stdin = self.__stdin.get_display()
         self.__stdin.set_display("")
-        self.stdout_a("You said: " + stdin)
+        self.prev_input = stdin
+        self.return_event()
+
+    def return_event(self):
+        pass
 
     def stdout_a(self, output):
         display = self.__stdout.get_display()

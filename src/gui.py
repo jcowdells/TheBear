@@ -83,4 +83,5 @@ class Text(Displayable, tk.Label):
 class Input(Displayable, tk.Entry):
     def __init__(self, root, bg="white", fg="black", font_name="TkFixedFont"):
         Displayable.__init__(self)
-        tk.Entry.__init__(self, root, textvariable=self.get_display_obj(), bg=bg, fg=fg, font=font_name)
+        tk.Entry.__init__(self, root, textvariable=self.get_display_obj(), bg=bg, fg=fg, font=font_name,
+                          borderwidth=0, highlightthickness=0)
