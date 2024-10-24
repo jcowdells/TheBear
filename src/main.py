@@ -1,5 +1,5 @@
-from src.render import ConsoleGUI, Image
-
+from src.render import ConsoleGUI, Texture
+import cProfile
 
 def main():
     console = ConsoleGUI(480, 360, 100, 100)
@@ -7,4 +7,4 @@ def main():
 
 if __name__ == "__main__":
     #image = Image("res/legendmixer.bin")
-    main()
+    cProfile.run("main()")

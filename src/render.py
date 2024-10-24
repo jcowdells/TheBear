@@ -1,19 +1,24 @@
 import random
+import time
 
 from src.console import Console
 from src.geometry import *
+from ext.converter import get_gradient_color
 
 def triangle_signed_area(point_a, point_b, point_c):
     return (point_b.x - point_a.x) * (point_c.y - point_a.y) - (point_b.y - point_a.y) * (point_c.x - point_a.x)
 
-def triangle_uv(a, b, c, f):
+def triangle_uvw(a, b, c, f):
     signed_area = triangle_signed_area(a, b, c)
-    area = 2 * signed_area
-    u = 1 / area * (a.y * c.x - a.x * c.y + (c.y - a.y) * f.x + (a.x - c.x) * f.y)
-    v = 1 / area * (a.x * b.y - a.y * b.x + (a.y - b.y) * f.x + (b.x - a.x) * f.y)
-    return Point(u, v)
 
-class Image:
+    d = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y)
+    u = ((b.y - c.y) * (f.x - c.x) + (c.x - b.x) * (f.y - c.y)) / d
+    v = ((c.y - a.y) * (f.x - c.x) + (a.x - c.x) * (f.y - c.y)) / d
+    w = 1 - u - v
+
+    return u, v, w
+
+class Texture:
     def __init__(self, filepath):
         self.__width = 0
         self.__height = 0
@@ -40,11 +45,16 @@ class Image:
         return self.__height
 
     def get_pixel(self, x, y):
+        if x <= 0: x = 0
+        if x >= self.get_width(): x = self.get_width() - 1
+        if y <= 0: y = 0
+        if y >= self.get_height(): y = self.get_height() - 1
         return self.__data[y * self.__width + x]
 
     def sample(self, x, y):
         sx = round(x * self.get_width())
         sy = round(y * self.get_height())
+
         return self.get_pixel(sx, sy)
 
 class Drawable:
@@ -81,10 +91,13 @@ class Triangle:
     def __points(self):
         return self.__point_a, self.__point_b, self.__point_c
 
-    def __init__(self, point_a, point_b, point_c):
+    def __init__(self, point_a, point_b, point_c, uv_a, uv_b, uv_c):
         self.__point_a = point_a
         self.__point_b = point_b
         self.__point_c = point_c
+        self.__uv_a = uv_a
+        self.__uv_b = uv_b
+        self.__uv_c = uv_c
 
     def iter_x(self):
         for point in self.__points:
@@ -121,7 +134,37 @@ class Triangle:
         return check_a >= 0 and check_b >= 0 and check_c >= 0
 
     def get_uv(self, point_p):
-        return triangle_uv(*self.__points, point_p)
+        uf, vf, wf = triangle_uvw(*self.__points, point_p)
+
+        u = self.__uv_a[0] * uf + self.__uv_b[0] * vf + self.__uv_c[0] * wf
+        v = self.__uv_a[1] * uf + self.__uv_b[1] * vf + self.__uv_c[1] * wf
+
+        return Point(u, v)
+
+    def rotate(self, centre, angle):
+        for point in self.__points:
+            point.rotation = angle
+            point.rotation_centre = centre
+
+class Image(Drawable):
+    def __init__(self, point_a, point_b, point_c, point_d, texture):
+        self.__point_a = point_a
+        self.__point_b = point_b
+        self.__point_c = point_c
+        self.__point_d = point_d
+
+        self.__triangle_a = Triangle(point_a, point_b, point_c, (0, 0), (1, 0), (1, 1))
+        self.__triangle_b = Triangle(point_a, point_c, point_d, (0, 0), (1, 1), (0, 1))
+
+        self.__texture = texture
+
+    def draw(self, console_gui):
+        console_gui.draw_sampler(self.__triangle_a, self.__texture)
+        console_gui.draw_sampler(self.__triangle_b, self.__texture)
+
+    def rotate(self, centre, angle):
+        self.__triangle_a.rotate(centre, angle)
+        self.__triangle_b.rotate(centre, angle)
 
 class Buffer:
     def __init__(self, width, height):
@@ -177,13 +220,19 @@ class ConsoleGUI(Console):
         super().__init__(width, height, x, y, 10, fg="#22BB00")
         self.buffer = Buffer(self.get_width_chars(), self.get_height_chars())
         self.point_a = Point(10, 10)
-        self.point_b = Point(30, 10)
-        self.point_c = Point(0, 0)
-        self.triangle = Triangle(self.point_b, self.point_a, self.point_c)
+        self.point_b = Point(110, 10)
+        self.point_c = Point(110, 80)
+        self.point_d = Point(10, 80)
+
+        self.centre = Point(55, 45)
+
+        #self.triangle = Triangle(self.point_b, self.point_a, self.point_c)
 
         self.count = 0
 
-        self.sampler = Image("../res/test2.bin")
+        self.sampler = Texture("res/me.bin")
+        self.image = Image(self.point_a, self.point_b, self.point_c, self.point_d, self.sampler)
+
 
     def configure_event(self, event):
         self.buffer.resize(self.get_width_chars(), self.get_height_chars())
@@ -228,9 +277,12 @@ class ConsoleGUI(Console):
         drawable.draw(self)
 
     def main(self):
-        self.count += 0.01
-        self.point_c.x = round(self.count)
+        self.count += 0.05
+        #self.point_c.x = round(self.count)
 
-        self.draw_sampler(self.triangle, self.sampler)
+        self.image.rotate(self.centre, self.count)
+        self.draw(self.image)
+
+        #self.draw_image(self.sampler)
         self.stdout_w(self.buffer.as_string())
         self.buffer.swap()
