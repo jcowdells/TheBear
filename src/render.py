@@ -1,7 +1,7 @@
 from src.console import Console
 from src.geometry import *
 
-class Texture:
+class Sampler:
     def __init__(self, filepath):
         self.__width = 0
         self.__height = 0
@@ -11,27 +11,28 @@ class Texture:
             while byte := file.read(1):
                 if index == 0:
                     self.__data = bytearray(self.__width * self.__height * 8)
-
                 if index == -2:
                     self.__width = int.from_bytes(byte, 'little')
                 elif index == -1:
                     self.__height = int.from_bytes(byte, 'little')
                 else:
                     self.__data[index] = int.from_bytes(byte, 'little')
-
                 index += 1
 
     def get_pixel(self, x, y):
-        if x <= 0: x = 0
-        if x >= self.__width: x = self.__height - 1
-        if y <= 0: y = 0
-        if y >= self.__height: y = self.__height - 1
+        if x <= 0:
+            x = 0
+        if x >= self.__width:
+            x = self.__height - 1
+        if y <= 0:
+            y = 0
+        if y >= self.__height:
+            y = self.__height - 1
         return self.__data[y * self.__width + x]
 
     def sample(self, x, y):
         sx = round(x * self.__width)
         sy = round(y * self.__height)
-
         return self.get_pixel(sx, sy)
 
 class Buffer:
@@ -82,7 +83,7 @@ class ConsoleGUI(Console):
         super().__init__(width, height, x, y, 10, fg="#22BB00")
         self.buffer = Buffer(self.get_width_chars(), self.get_height_chars())
         self.count = 0
-        self.sampler = Texture("res/me.bin")
+        self.sampler = Sampler("../res/me.bin")
 
     def configure_event(self, event):
         self.buffer.resize(self.get_width_chars(), self.get_height_chars())
@@ -107,19 +108,6 @@ class ConsoleGUI(Console):
                     fill = sampler.sample(u, v)
                     self.buffer.try_set(x, y, fill)
 
-    def draw(self, drawable):
-        drawable.draw(self)
-
-    def main(self):
-        self.count += 0.05
-
-        a = point_rotate((10, 10), (55, 45), self.count)
-        b = point_rotate((110, 10), (55, 45), self.count)
-        c = point_rotate((110, 80), (55, 45), self.count)
-        d = point_rotate((10, 80), (55, 45), self.count)
-
-        self.draw_sampler(a, b, c, (0, 0), (1, 0), (1, 1), self.sampler)
-        self.draw_sampler(a, c, d, (0, 0), (1, 1), (0, 1), self.sampler)
-
+    def swap_buffers(self):
         self.stdout_w(self.buffer.as_string())
         self.buffer.swap()

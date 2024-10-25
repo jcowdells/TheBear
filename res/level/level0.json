@@ -1,0 +1,17 @@
+{
+  "BOUNDS": [
+    [-10, -10],
+    [10, -10],
+    [10, 10],
+    [-10, 10]
+  ],
+  "TEXTURES": [
+    {
+      "texture": "res/me.bin",
+      "indices": [0, 1, 2, 3]
+    }
+  ],
+  "OPTIONS": {
+    "outline": "#"
+  }
+}

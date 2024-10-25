@@ -14,12 +14,12 @@ def line_gradient(a, b):
         return 1, 1, 0
     elif math.fabs(d_x) > math.fabs(d_y):
         gradient = d_y / d_x
-        intercept = -a[Y] - gradient * a[X]
-        return gradient, 1, intercept
+        intercept = a[Y] - gradient * a[X]
+        return -gradient, 1, intercept
     else:
         gradient = d_x / d_y
-        intercept = -a[X] - gradient * a[Y]
-        return 1, gradient, intercept
+        intercept = a[X] - gradient * a[Y]
+        return 1, -gradient, intercept
 
 def line_bbox(a, b):
     min_x = min(a[X], b[X])
@@ -34,16 +34,16 @@ def line_iter_points(a, b):
 
     if gy == 1:
         for x in range(min_x, max_x + 1):
-            yield line_solve_y(x, gx, c)
+            yield x, round(line_solve_y(x, gx, c))
     elif gx == 1:
         for y in range(min_y, max_y + 1):
-            yield line_solve_x(y, gy, c)
+            yield round(line_solve_x(y, gy, c)), y
 
 def line_solve_x(y, m, c):
-    return -m * y - c
+    return -m * y - c * -1
 
 def line_solve_y(x, m, c):
-    return -m * x - c
+    return -m * x - c * -1
 
 def triangle_signed_area(a, b, c):
     area = (b[X] - a[X]) * (c[Y] - a[Y]) - (b[Y] - a[Y]) * (c[X] - a[X])
