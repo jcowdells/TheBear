@@ -1,11 +1,13 @@
 from src.console import Console
 from src.geometry import *
+import util
 
 class Sampler:
     def __init__(self, filepath):
         self.__width = 0
         self.__height = 0
         self.__data = None
+        filepath = util.abspath(filepath)
         with open(filepath, 'rb') as file:
             index = -2
             while byte := file.read(1):
@@ -83,7 +85,7 @@ class ConsoleGUI(Console):
         super().__init__(width, height, x, y, 10, fg="#22BB00")
         self.buffer = Buffer(self.get_width_chars(), self.get_height_chars())
         self.count = 0
-        self.sampler = Sampler("../res/me.bin")
+        self.sampler = Sampler("/res/me.bin")
 
     def configure_event(self, event):
         self.buffer.resize(self.get_width_chars(), self.get_height_chars())
@@ -97,7 +99,7 @@ class ConsoleGUI(Console):
         for x in range(min_x, max_x + 1):
             for y in range(min_y, max_y + 1):
                 if triangle_contains(a, b, c, (x, y)):
-                    self.buffer.try_set(x, y, fill)
+                    self.buffer.try_set(x, y, ord(fill))
 
     def draw_sampler(self, a, b, c, uv_a, uv_b, uv_c, sampler):
         min_x, min_y, max_x, max_y = triangle_bbox(a, b, c)
@@ -107,6 +109,9 @@ class ConsoleGUI(Console):
                     u, v = triangle_uv(a, b, c, uv_a, uv_b, uv_c, (x, y))
                     fill = sampler.sample(u, v)
                     self.buffer.try_set(x, y, fill)
+
+    def draw_character(self, a, fill="#"):
+        self.buffer.try_set(a[X], a[Y], ord(fill))
 
     def swap_buffers(self):
         self.stdout_w(self.buffer.as_string())

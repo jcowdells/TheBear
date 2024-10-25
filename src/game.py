@@ -91,7 +91,7 @@ class Level:
                     sampler_index = used_samplers[texture_file]
                 else:
                     sampler_index = len(self.__samplers)
-                    self.__samplers.append(Sampler(util.abspath(texture_file)))
+                    self.__samplers.append(Sampler(texture_file))
                     used_samplers[texture_file] = sampler_index
 
                 c1, c2, c3, c4 = texture[INDICES]
@@ -108,11 +108,17 @@ class Level:
     def get_bounds(self):
         return self.__bounds
 
+    def get_bound(self, bound_index):
+        return self.__bounds[bound_index]
+
     def get_num_textures(self):
         return len(self.__textures)
 
     def get_texture(self, texture_index):
         return self.__textures[texture_index]
+
+    def get_sampler(self, sampler_index):
+        return self.__samplers[sampler_index]
 
     def get_outline(self):
         return self.__outline

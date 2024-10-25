@@ -75,9 +75,37 @@ def triangle_uv(a, b, c, uv_a, uv_b, uv_c, p):
     v = uv_a[V] * uf + uv_b[V] * vf + uv_c[V] * wf
     return u, v
 
-def point_rotate(p, c, angle):
+def point_rotate_centre(p, c, angle):
     cx = p[X] - c[X]
     cy = p[Y] - c[Y]
     rx = cx * math.cos(angle) - cy * math.sin(angle)
     ry = cx * math.sin(angle) + cy * math.cos(angle)
     return round(rx + c[X]), round(ry + c[Y])
+
+def point_rotate(p, angle):
+    rx = p[X] * math.cos(angle) - p[Y] * math.sin(angle)
+    ry = p[X] * math.sin(angle) + p[Y] * math.cos(angle)
+    return rx, ry
+
+def point_centre(p, c):
+    return p[X] - c[X], p[Y] - c[Y]
+
+def point_divide(p, d):
+    return p[X] / d, p[Y] / d
+
+def point_add(a, b):
+    return a[X] + b[X], a[Y] + b[Y]
+
+def point_transform(point, centre, rotation, max_view, screen_width_px, screen_height_px, screen_width_ch, screen_height_ch):
+    point = point_centre(point, centre)
+    point = point_rotate(point, rotation)
+    point = point_divide(point, max_view)
+    if screen_width_px > screen_height_px:
+        scale = screen_height_px / screen_width_px
+        point = point[X], point[Y] / scale
+    else:
+        scale = screen_width_px / screen_height_px
+        point = point[X] / scale, point[Y]
+    point = point_add(point, (1, 1))
+    point = point_divide(point, 2)
+    return round(point[X] * screen_width_ch), round(point[Y] * screen_height_ch)

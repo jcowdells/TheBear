@@ -51,9 +51,9 @@ class Window(tk.Tk):
     def begin(self):
         self.running = True
         while self.running:
-            self.main()
             self.update()
             self.update_idletasks()
+            self.main()
 
     def end(self):
         self.running = False

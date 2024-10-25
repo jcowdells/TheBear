@@ -55,5 +55,11 @@ class Console(Window):
     def get_height_chars(self):
         return self.__stdout.winfo_height() // tk_get_fixed_font_height()
 
+    def get_width(self):
+        return self.__stdout.winfo_width()
+
+    def get_height(self):
+        return self.__stdout.winfo_height()
+
     def main(self):
         pass

@@ -7,7 +7,7 @@
   ],
   "TEXTURES": [
     {
-      "texture": "res/me.bin",
+      "texture": "res/textures/pawprint.tex",
       "indices": [0, 1, 2, 3]
     }
   ],
