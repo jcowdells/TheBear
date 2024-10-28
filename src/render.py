@@ -2,6 +2,12 @@ from src.console import Console
 from src.geometry import *
 import util
 
+ALIGN_LEFT   = 0
+ALIGN_TOP    = 0
+ALIGN_RIGHT  = 1
+ALIGN_BOTTOM = 1
+ALIGN_CENTER = 2
+
 class Sampler:
     def __init__(self, filepath):
         self.__width = 0
@@ -44,6 +50,8 @@ class Buffer:
         self.__buffer = bytearray(width * height)
 
     def resize(self, width, height):
+        if width < 0: width = 0
+        if height < 0: height = 0
         self.width = width
         self.height = height
         self.__buffer = bytearray(width * height)
@@ -91,15 +99,17 @@ class ConsoleGUI(Console):
         self.buffer.resize(self.get_width_chars(), self.get_height_chars())
 
     def draw_line(self, a, b, fill="#"):
+        fill = ord(fill)
         for x, y in line_iter_points(a, b):
-            self.buffer.try_set(x, y, ord(fill))
+            self.buffer.try_set(x, y, fill)
 
     def draw_triangle(self, a, b, c, fill="#"):
         min_x, min_y, max_x, max_y = triangle_bbox(a, b, c)
+        fill = ord(fill)
         for x in range(min_x, max_x + 1):
             for y in range(min_y, max_y + 1):
                 if triangle_contains(a, b, c, (x, y)):
-                    self.buffer.try_set(x, y, ord(fill))
+                    self.buffer.try_set(x, y, fill)
 
     def draw_sampler(self, a, b, c, uv_a, uv_b, uv_c, sampler):
         min_x, min_y, max_x, max_y = triangle_bbox(a, b, c)
@@ -112,6 +122,62 @@ class ConsoleGUI(Console):
 
     def draw_character(self, a, fill="#"):
         self.buffer.try_set(a[X], a[Y], ord(fill))
+
+    def draw_text(self, a, text, align_x=ALIGN_CENTER, align_y=ALIGN_CENTER, justify=ALIGN_CENTER):
+        lines = text.split("\n")
+        max_width = 0
+        max_height = len(lines)
+        for i in range(max_height):
+            len_line = len(lines[i])
+            if len_line > max_width:
+                max_width = len_line
+
+        for i in range(max_height):
+            if justify == ALIGN_LEFT:
+                lines[i] = lines[i].ljust(max_width, "\0")
+            elif justify == ALIGN_RIGHT:
+                lines[i] = lines[i].rjust(max_width, "\0")
+            elif justify == ALIGN_CENTER:
+                lines[i] = lines[i].center(max_width, "\0")
+
+        mod_x = a[X]
+        mod_y = a[Y]
+
+        if align_x == ALIGN_RIGHT:
+            mod_x = a[X] - max_width + 1
+        elif align_x == ALIGN_CENTER:
+            mod_x = a[X] - max_width // 2 + 1
+
+        if align_y == ALIGN_BOTTOM:
+            mod_y = a[Y] - max_height + 1
+        elif align_y == ALIGN_CENTER:
+            mod_y = a[Y] - max_height // 2
+
+        for y in range(max_height):
+            for x in range(max_width):
+                draw_x = x + mod_x
+                draw_y = y + mod_y
+                draw_c = lines[y][x]
+                if draw_c != "\0":
+                    self.buffer.try_set(draw_x, draw_y, ord(draw_c))
+
+    def draw_sprite(self, a, b, sampler):
+        width = b[X] - a[X]
+        height = b[Y] - a[Y]
+        for y in range(height + 1):
+            v = y / height
+            for x in range(width + 1):
+                u = x / width
+                fill = sampler.sample(u, v)
+                self.buffer.try_set(x, y, fill)
+
+    def draw_rectangle(self, a, b, fill="#"):
+        width = b[X] - a[X]
+        height = b[Y] - a[Y]
+        fill = ord(fill)
+        for y in range(height + 1):
+            for x in range(width + 1):
+                self.buffer.try_set(x + a[X], y + a[Y], fill)
 
     def swap_buffers(self):
         self.stdout_w(self.buffer.as_string())

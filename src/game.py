@@ -122,3 +122,35 @@ class Level:
 
     def get_outline(self):
         return self.__outline
+
+class Menu:
+    def __init__(self, title, default_description=""):
+        self.title = title
+        self.__default_description = default_description
+        self.__items = []
+
+    def add_item(self, item_name, item_description=None):
+        self.__items.append((item_name, item_description))
+
+    def remove_item(self, item_name):
+        index = self.get_item_index_by_name(item_name)
+        self.__items.pop(index)
+
+    def get_item_name(self, index):
+        return self.__items[index][0]
+
+    def get_item_description(self, index):
+        description = self.__items[index][1]
+        if description is None:
+            return self.__default_description
+        else:
+            return description
+
+    def get_num_items(self):
+        return len(self.__items)
+
+    def get_item_index_by_name(self, item_name):
+        for i in range(len(self.__items)):
+            item = self.__items[i]
+            if item_name == item[0]:
+                return i

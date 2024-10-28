@@ -23,12 +23,14 @@ class Console(Window):
 
         self.prev_input = ""
 
+        self.add_key_release_listener(self.key_release_listener)
+
         self.__stdin.pack(side=tk.BOTTOM, fill=tk.X)
         self.__stdout.pack(fill=tk.BOTH, expand=tk.TRUE)
 
         self.__running = True
 
-    def key_release_event(self, event):
+    def key_release_listener(self, event):
         if event.keysym == "Return":
             self.__return_event()
 
