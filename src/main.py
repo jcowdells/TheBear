@@ -2,7 +2,8 @@ import time
 import textwrap
 
 from src.render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, ALIGN_BOTTOM
-from src.geometry import X, Y, point_rotate, point_transform
+from src.geometry import X, Y, point_rotate, point_transform, line_gradient, line_perpendicular, line_intersect, \
+    point_inside, line_square_length
 from src.game import Level, Player, Menu
 import cProfile
 
@@ -10,6 +11,8 @@ UP = "Up"
 DOWN = "Down"
 LEFT = "Left"
 RIGHT = "Right"
+
+debug_counter = 0
 
 class Main(ConsoleGUI):
     def __init__(self):
@@ -36,6 +39,13 @@ class Main(ConsoleGUI):
         self.in_menu = False
 
     def main(self):
+        global debug_counter
+        debug_counter = 0
+        def debug(msg):
+            global debug_counter
+            self.draw_text((0, debug_counter), msg, align_x=ALIGN_LEFT, align_y=ALIGN_TOP, justify=ALIGN_LEFT)
+            debug_counter += 1
+
         self.cur_time = time.perf_counter()
         # print(f"FPS: {1 / (self.cur_time - self.prev_time)}")
         self.prev_time = self.cur_time
@@ -50,14 +60,51 @@ class Main(ConsoleGUI):
         if self.key_pressed(DOWN):
             self.player.move(0.05)
 
-        centre = self.transform_point((0, 0), (0, 0), 0)
-        self.draw_character(centre, fill="I")
-        #self.draw_level(self.level0, self.player.get_position(), self.player.get_rotation())
+        position = self.player.get_position()
+        debug(f"position: {round(position[X], 3)}, {round(position[Y], 3)}")
 
-        self.draw_text(centre, "testing text!\nline2\nline3\nline4\nline5", justify=ALIGN_LEFT)
+        centre = self.transform_point((0, 0), (0, 0), 0)
+        self.draw_level(self.level0, self.player.get_position(), self.player.get_rotation())
 
         if self.in_menu:
             self.draw_menu(self.menu, self.menu_index)
+
+        #print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
+
+        collided = False
+
+        bounds = self.level0.get_bounds()
+        len_bounds = len(bounds)
+        for i in range(len_bounds):
+            a = bounds[i]
+            if i == len_bounds - 1:
+                b = bounds[0]
+            else:
+                b = bounds[i + 1]
+
+            debug(f"l1: {a} -> {b}")
+
+            mx1, my1, c1 = line_gradient(a, b)
+
+            debug(f"l1: {round(mx1, 3)}x + {round(my1, 3)}y + {round(c1, 3)} = 0")
+
+            mx2, my2, c2 = line_perpendicular(mx1, my1, self.player.get_position())
+
+            debug(f"l2: {round(mx2, 3)}x + {round(my2, 3)}y + {round(c2, 3)} = 0")
+
+            p = line_intersect(mx2, my2, c2, mx1, my1, c1)
+
+            screen_pos = self.transform_point(p, self.player.get_position(), self.player.get_rotation())
+            self.draw_character(screen_pos, fill="X")
+
+            if point_inside(a, b, p):
+                if line_square_length(p, self.player.get_position()) < self.player.get_hitbox_radius()**2:
+                    collided = True
+
+        fill = "O"
+        if collided:
+            fill = "X"
+        self.draw_circle(self.transform_point((-1, -1), (0, 0), 0), self.transform_point((1, 1), (0, 0), 0), fill=fill)
 
         self.swap_buffers()
 

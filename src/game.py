@@ -3,7 +3,7 @@ import math
 
 import util
 from src.render import Sampler
-from src.geometry import X, Y
+from src.geometry import X, Y, line_gradient, line_perpendicular, line_intersect, point_inside, line_square_length
 
 BOUNDS   = "BOUNDS"
 TEXTURES = "TEXTURES"
@@ -21,6 +21,7 @@ class Entity:
         self._position = position
         self._rotation = rotation
         self._hitbox_radius = hitbox_radius
+        self.__square_radius = hitbox_radius * hitbox_radius
 
     def get_position(self):
         return self._position
@@ -42,6 +43,22 @@ class Entity:
 
     def set_hitbox_radius(self, hitbox_radius):
         self._hitbox_radius = hitbox_radius
+        self.__square_radius = hitbox_radius * hitbox_radius
+
+    def line_collision(self, a, b):
+        mx1, my1, c1 = line_gradient(a, b)
+        #print(f"{mx1}x + {my1}y + {c1} = 0")
+        mx2, my2, c2 = line_perpendicular(mx1, my1, self._position)
+        #print(f"{mx2}x + {my2}y + {c2} = 0")
+        p = line_intersect(mx1, my1, c1, mx2, my2, c2)
+
+        #print(a, b, p)
+
+        if point_inside(a, b, p):
+            return line_square_length(p, self._position) < self.__square_radius
+        else:
+            #print("Not in area")
+            return False
 
 class Player(Entity):
     def __init__(self, position, rotation):

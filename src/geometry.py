@@ -15,11 +15,11 @@ def line_gradient(a, b):
     elif math.fabs(d_x) > math.fabs(d_y):
         gradient = d_y / d_x
         intercept = a[Y] - gradient * a[X]
-        return -gradient, 1, intercept
+        return -gradient, 1, -intercept
     else:
         gradient = d_x / d_y
         intercept = a[X] - gradient * a[Y]
-        return 1, -gradient, intercept
+        return 1, -gradient, -intercept
 
 def line_bbox(a, b):
     min_x = min(a[X], b[X])
@@ -40,10 +40,25 @@ def line_iter_points(a, b):
             yield round(line_solve_x(y, gy, c)), y
 
 def line_solve_x(y, m, c):
-    return -m * y - c * -1
+    return -m * y - c
 
 def line_solve_y(x, m, c):
-    return -m * x - c * -1
+    return -m * x - c
+
+def line_perpendicular(mx, my, p):
+    return my, -mx, mx * p[Y] - my * p[X]
+
+def line_intersect(mx1, my1, c1, mx2, my2, c2):
+      d = mx1 * my2 - mx2 * my1
+      x = (my1 * c2 - my2 * c1) / d
+      y = (mx2 * c1 - mx1 * c2) / d
+      return x, y
+
+def line_square_length(a, b):
+    return (a[X] - b[X]) ** 2 + (a[Y] - b[Y]) ** 2
+
+def line_length(a, b):
+    return math.sqrt(line_square_length(a, b))
 
 def triangle_signed_area(a, b, c):
     area = (b[X] - a[X]) * (c[Y] - a[Y]) - (b[Y] - a[Y]) * (c[X] - a[X])
@@ -109,3 +124,9 @@ def point_transform(point, centre, rotation, max_view, screen_width_px, screen_h
     point = point_add(point, (1, 1))
     point = point_divide(point, 2)
     return round(point[X] * screen_width_ch), round(point[Y] * screen_height_ch)
+
+def point_inside(a, b, p):
+    in_x = min(a[X], b[X]) <= p[X] <= max(a[X], b[X])
+    if not in_x: return False
+    in_y = min(a[Y], b[Y]) <= p[Y] <= max(a[Y], b[Y])
+    return in_y

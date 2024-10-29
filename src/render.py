@@ -179,6 +179,21 @@ class ConsoleGUI(Console):
             for x in range(width + 1):
                 self.buffer.try_set(x + a[X], y + a[Y], fill)
 
+    def draw_circle(self, a, b, fill="#"):
+        width = b[X] - a[X]
+        height = b[Y] - a[Y]
+
+        if width == 0 or height == 0:
+            return
+
+        fill = ord(fill)
+        for y in range(height + 1):
+            for x in range(width + 1):
+                u = x / width * 2 - 1
+                v = y / height * 2 - 1
+                if (u * u) + (v * v) <= 1:
+                    self.buffer.try_set(x + a[X], y + a[Y], fill)
+
     def swap_buffers(self):
         self.stdout_w(self.buffer.as_string())
         self.buffer.swap()
