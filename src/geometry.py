@@ -1,5 +1,7 @@
 import math
 
+HALF_PI = math.pi / 2
+
 X = 0
 Y = 1
 
@@ -60,6 +62,16 @@ def line_square_length(a, b):
 def line_length(a, b):
     return math.sqrt(line_square_length(a, b))
 
+def line_collision(a, b, p, r):
+    mx1, my1, c1 = line_gradient(a, b)
+    mx2, my2, c2 = line_perpendicular(mx1, my1, p)
+    ip = line_intersect(mx1, my1, c1, mx2, my2, c2)
+
+    if point_inside(a, b, ip):
+        return line_square_length(ip, p) < r
+    else:
+        return False
+
 def triangle_signed_area(a, b, c):
     area = (b[X] - a[X]) * (c[Y] - a[Y]) - (b[Y] - a[Y]) * (c[X] - a[X])
     return area
@@ -111,6 +123,9 @@ def point_divide(p, d):
 def point_add(a, b):
     return a[X] + b[X], a[Y] + b[Y]
 
+def point_subtract(a, b):
+    return a[X] - b[X], a[Y] - b[Y]
+
 def point_transform(point, centre, rotation, max_view, screen_width_px, screen_height_px, screen_width_ch, screen_height_ch):
     point = point_centre(point, centre)
     point = point_rotate(point, rotation)
@@ -130,3 +145,44 @@ def point_inside(a, b, p):
     if not in_x: return False
     in_y = min(a[Y], b[Y]) <= p[Y] <= max(a[Y], b[Y])
     return in_y
+
+def point_collision(a, p, r):
+    return line_square_length(a, p) < r
+
+def point_normal(a, p):
+    v = vector_from_points(p, a)
+    v = vector_perpendicular(v)
+    v = vector_normalise(v)
+    return v
+
+def vector_from_angle(a, r):
+    return r * math.cos(a + HALF_PI), r * math.sin(a + HALF_PI)
+
+def vector_from_points(a, b):
+    return b[X] - a[X], b[Y] - a[Y]
+
+def vector_magnitude(v):
+    return math.sqrt(v[X] * v[X] + v[Y] * v[Y])
+
+def vector_normalise(v):
+    mag = vector_magnitude(v)
+    return v[X] / mag, v[Y] / mag
+
+def vector_dot(v, q):
+    return v[X] * q[X] + v[Y] * q[Y]
+
+def vector_project(v, q):
+    mul = vector_dot(v, q)
+    return v[X] - q[X] * mul, v[Y] - q[Y] * mul
+
+def vector_subtract(v, q):
+    return v[X] - q[X], v[Y] - q[Y]
+
+def vector_add(v, q):
+    return v[X] + q[X], v[Y] + q[Y]
+
+def vector_multiply(v, m):
+    return v[X] * m, v[Y] * m
+
+def vector_perpendicular(v):
+    return v[Y], -v[X]

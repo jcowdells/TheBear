@@ -3,7 +3,8 @@ import math
 
 import util
 from src.render import Sampler
-from src.geometry import X, Y, line_gradient, line_perpendicular, line_intersect, point_inside, line_square_length
+from src.geometry import X, Y, line_gradient, line_perpendicular, line_intersect, point_inside, line_square_length, \
+    HALF_PI, vector_from_points, vector_perpendicular, vector_normalise, line_collision, vector_add
 
 BOUNDS   = "BOUNDS"
 TEXTURES = "TEXTURES"
@@ -13,8 +14,6 @@ TEXTURE = "texture"
 INDICES = "indices"
 
 OUTLINE = "outline"
-
-HALF_PI = math.pi * 0.5
 
 class Entity:
     def __init__(self, position, rotation, hitbox_radius):
@@ -46,19 +45,7 @@ class Entity:
         self.__square_radius = hitbox_radius * hitbox_radius
 
     def line_collision(self, a, b):
-        mx1, my1, c1 = line_gradient(a, b)
-        #print(f"{mx1}x + {my1}y + {c1} = 0")
-        mx2, my2, c2 = line_perpendicular(mx1, my1, self._position)
-        #print(f"{mx2}x + {my2}y + {c2} = 0")
-        p = line_intersect(mx1, my1, c1, mx2, my2, c2)
-
-        #print(a, b, p)
-
-        if point_inside(a, b, p):
-            return line_square_length(p, self._position) < self.__square_radius
-        else:
-            #print("Not in area")
-            return False
+        return line_collision(a, b, self._position, self.__square_radius)
 
 class Player(Entity):
     def __init__(self, position, rotation):
@@ -88,6 +75,8 @@ class Level:
             options = raw_json[OPTIONS]
 
         self.__bounds = []
+        self.__connected_lines = []
+        self.__normals = []
         used_samplers = {}
         self.__samplers = []
         self.__textures = []
@@ -98,6 +87,13 @@ class Level:
                 self.__bounds.append((x, y))
         except ValueError:
             raise SyntaxError("Coordinate must contain only two values")
+
+        self.__num_bounds = len(self.__bounds)
+
+        for a, b in self.iter_lines():
+            v = vector_from_points(b, a)
+            v = vector_normalise(v)
+            self.__normals.append(v)
 
         texture_file = "<None>"
         try:
@@ -125,8 +121,28 @@ class Level:
     def get_bounds(self):
         return self.__bounds
 
+    def iter_lines(self):
+        for i in range(self.__num_bounds):
+            a = self.__bounds[i]
+            if i == self.__num_bounds - 1:
+                b = self.__bounds[0]
+            else:
+                b = self.__bounds[i + 1]
+            yield a, b
+
+    def get_connected_lines(self, bound_index):
+        i_b = bound_index
+        if bound_index == 0:
+            i_a = self.__num_bounds - 1
+        else:
+            i_a = bound_index - 1
+        return i_a, i_b
+
     def get_bound(self, bound_index):
         return self.__bounds[bound_index]
+
+    def get_normal(self, normal_index):
+        return self.__normals[normal_index]
 
     def get_num_textures(self):
         return len(self.__textures)

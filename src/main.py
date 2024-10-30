@@ -1,9 +1,11 @@
+import math
 import time
 import textwrap
 
 from src.render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, ALIGN_BOTTOM
 from src.geometry import X, Y, point_rotate, point_transform, line_gradient, line_perpendicular, line_intersect, \
-    point_inside, line_square_length
+    point_inside, line_square_length, point_subtract, vector_from_angle, vector_project, vector_subtract, point_add, \
+    line_collision, point_collision, point_normal, vector_from_points, vector_normalise, vector_add
 from src.game import Level, Player, Menu
 import cProfile
 
@@ -47,7 +49,7 @@ class Main(ConsoleGUI):
             debug_counter += 1
 
         self.cur_time = time.perf_counter()
-        # print(f"FPS: {1 / (self.cur_time - self.prev_time)}")
+        debug(f"FPS: {1 / (self.cur_time - self.prev_time)}")
         self.prev_time = self.cur_time
 
         if self.key_pressed(LEFT):
@@ -55,13 +57,60 @@ class Main(ConsoleGUI):
         if self.key_pressed(RIGHT):
             self.player.rotate(0.003)
 
+        force = (0, 0)
         if self.key_pressed(UP):
-            self.player.move(-0.05)
+            force = vector_from_angle(self.player.get_rotation() + math.pi, 0.05)
         if self.key_pressed(DOWN):
-            self.player.move(0.05)
+            force = vector_from_angle(self.player.get_rotation(), 0.05)
+        if self.key_pressed(UP) and self.key_pressed(DOWN):
+            force = (0, 0)
 
+        debug(str(force))
+
+        collided = False
         position = self.player.get_position()
+        new_position = point_add(position, force)
+        debug(f"new position: {new_position}")
+
+        collided_lines = []
+
+        count = 0
+        for a, b in self.level0.iter_lines():
+            if line_collision(a, b, new_position, 1):
+                debug(f"collision at line : {a} {b}")
+                collided = True
+                normal = self.level0.get_normal(count)
+                projected_force = vector_project(force, normal)
+                force = vector_subtract(force, projected_force)
+                collided_lines.append(count)
+            count += 1
+
+        count = 0
+        for a in self.level0.get_bounds():
+            if point_collision(a, new_position, 1):
+                i_a, i_b = self.level0.get_connected_lines(count)
+                if i_a in collided_lines or i_b in collided_lines:
+                    debug(f"accounted for alre: {a}")
+                    continue
+                debug(f"collision at point: {a}")
+                collided = True
+                cur_dist = vector_from_points(a, new_position)
+                escape_force = vector_normalise(cur_dist) * 1
+                projected_force = vector_subtract(escape_force, cur_dist)
+                force = vector_add(force, projected_force)
+            count += 1
+
+        if len(collided_lines) >= 2:
+            force = (0, 0)
+
+        debug(str(force))
+
+        self.player.set_position((position[X] + force[X], position[Y] + force[Y]))
         debug(f"position: {round(position[X], 3)}, {round(position[Y], 3)}")
+
+        fill = "O"
+        if collided:
+            fill = "X"
 
         centre = self.transform_point((0, 0), (0, 0), 0)
         self.draw_level(self.level0, self.player.get_position(), self.player.get_rotation())
@@ -69,41 +118,6 @@ class Main(ConsoleGUI):
         if self.in_menu:
             self.draw_menu(self.menu, self.menu_index)
 
-        #print("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX")
-
-        collided = False
-
-        bounds = self.level0.get_bounds()
-        len_bounds = len(bounds)
-        for i in range(len_bounds):
-            a = bounds[i]
-            if i == len_bounds - 1:
-                b = bounds[0]
-            else:
-                b = bounds[i + 1]
-
-            debug(f"l1: {a} -> {b}")
-
-            mx1, my1, c1 = line_gradient(a, b)
-
-            debug(f"l1: {round(mx1, 3)}x + {round(my1, 3)}y + {round(c1, 3)} = 0")
-
-            mx2, my2, c2 = line_perpendicular(mx1, my1, self.player.get_position())
-
-            debug(f"l2: {round(mx2, 3)}x + {round(my2, 3)}y + {round(c2, 3)} = 0")
-
-            p = line_intersect(mx2, my2, c2, mx1, my1, c1)
-
-            screen_pos = self.transform_point(p, self.player.get_position(), self.player.get_rotation())
-            self.draw_character(screen_pos, fill="X")
-
-            if point_inside(a, b, p):
-                if line_square_length(p, self.player.get_position()) < self.player.get_hitbox_radius()**2:
-                    collided = True
-
-        fill = "O"
-        if collided:
-            fill = "X"
         self.draw_circle(self.transform_point((-1, -1), (0, 0), 0), self.transform_point((1, 1), (0, 0), 0), fill=fill)
 
         self.swap_buffers()
