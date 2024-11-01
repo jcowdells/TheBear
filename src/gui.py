@@ -49,14 +49,22 @@ class Window(tk.Tk):
         pass
 
     def begin(self):
+        self.on_begin()
         self.running = True
         while self.running:
             self.update()
             self.update_idletasks()
             self.main()
 
+    def on_begin(self):
+        pass
+
     def end(self):
         self.running = False
+        self.on_end()
+
+    def on_end(self):
+        pass
 
     def main(self):
         pass

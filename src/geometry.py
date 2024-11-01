@@ -186,3 +186,9 @@ def vector_multiply(v, m):
 
 def vector_perpendicular(v):
     return v[Y], -v[X]
+
+def lerp_p(a, b, t):
+    return lerp_v(a[X], b[X], t), lerp_v(a[Y], b[Y], t)
+
+def lerp_v(a, b, t):
+    return a + (b - a) * t

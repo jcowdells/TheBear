@@ -1,13 +1,16 @@
 import math
 import time
 import textwrap
+from multiprocessing import Process, Pipe
 
 from src.render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, ALIGN_BOTTOM
 from src.geometry import X, Y, point_rotate, point_transform, line_gradient, line_perpendicular, line_intersect, \
     point_inside, line_square_length, point_subtract, vector_from_angle, vector_project, vector_subtract, point_add, \
     line_collision, point_collision, point_normal, vector_from_points, vector_normalise, vector_add
-from src.game import Level, Player, Menu
+from src.game import Level, Player, Menu, DisplayEntity
 import cProfile
+from src.physics import send_message, recv_message, physics_thread, get_entity, TIMESTEP
+from src.util import Message
 
 UP = "Up"
 DOWN = "Down"
@@ -19,26 +22,27 @@ debug_counter = 0
 class Main(ConsoleGUI):
     def __init__(self):
         super().__init__(480, 360, 100, 100)
-        self.level0 = Level("res/level/level0.json")
-        self.player = Player((0, 0), 0)
-
-        self.__inputs = {
-            DOWN:  False,
-            UP:    False,
-            RIGHT: False,
-            LEFT:  False
-        }
 
         self.prev_time = time.perf_counter()
         self.cur_time  = time.perf_counter()
 
-        self.menu = Menu("INVENTORY")
-        self.menu.add_item("Hunting Knife", "This may come in handy if you encounter any bears.")
-        self.menu.add_item("Bandage", "Used to quickly repair wounds.")
-        self.menu.add_item("Honey", "A good distraction for any bears around.")
-        self.menu.add_item("Gold", "Keep it safe.")
-        self.menu_index = 0
-        self.in_menu = False
+        self.prev_delta_time = time.perf_counter()
+        self.delta = 1
+
+        input_pipe, self.output_pipe = Pipe()
+        self.input_pipe, output_pipe  = Pipe()
+        self.physics = Process(target=physics_thread, args=(input_pipe, output_pipe))
+
+        self.level = None
+        self.entity_list = []
+        self.focus_id = 0
+
+    def on_begin(self):
+        self.physics.start()
+
+    def on_end(self):
+        send_message(self.output_pipe, Message.EXIT, 0)
+        self.physics.join()
 
     def main(self):
         global debug_counter
@@ -49,78 +53,70 @@ class Main(ConsoleGUI):
             debug_counter += 1
 
         self.cur_time = time.perf_counter()
-        debug(f"FPS: {1 / (self.cur_time - self.prev_time)}")
+        fps = 1 / (self.cur_time - self.prev_time)
+        debug(f"FPS: {fps}")
         self.prev_time = self.cur_time
 
-        if self.key_pressed(LEFT):
-            self.player.rotate(-0.003)
-        if self.key_pressed(RIGHT):
-            self.player.rotate(0.003)
+        while self.input_pipe.poll():
+            try:
+                message, data = recv_message(self.input_pipe)
+                if message == Message.LEVEL_CHANGED:
+                    self.level = data
+                if message == Message.ENTITY_CREATED:
+                    self.entity_list.append(data)
+                if message == Message.ENTITY_UPDATE:
+                    entity_id, position, rotation = data
+                    entity = get_entity(entity_id, self.entity_list)
+                    entity.set_position(position)
+                    entity.set_rotation(rotation)
+                if message == Message.ENTITY_ANIMATE:
+                    entity_id, sampler_index = data
+                    entity = get_entity(entity_id, self.entity_list)
+                    entity.set_sampler_index(sampler_index)
+                if message == Message.FOCUS_ID:
+                    self.focus_id = data
+                if message == Message.DELTA:
+                    self.prev_delta_time = time.perf_counter()
+                    self.delta = data
+                    for entity in self.entity_list:
+                        entity.update()
+            except EOFError:
+                return
 
-        force = (0, 0)
-        if self.key_pressed(UP):
-            force = vector_from_angle(self.player.get_rotation() + math.pi, 0.05)
-        if self.key_pressed(DOWN):
-            force = vector_from_angle(self.player.get_rotation(), 0.05)
-        if self.key_pressed(UP) and self.key_pressed(DOWN):
-            force = (0, 0)
+        curr_delta = self.cur_time - self.prev_delta_time
+        alpha = curr_delta / self.delta
+        alpha = max(0, min(1, alpha))
+        debug(f"acct delta {self.delta}")
+        debug(f"curr delta {curr_delta}")
+        debug(f"     alpha {alpha}")
+        debug(f"{self.get_width_chars()} {self.get_height_chars()}")
 
-        debug(str(force))
+        focus_entity = get_entity(self.focus_id, self.entity_list)
+        if focus_entity is not None:
+            focus_centre = focus_entity.get_position(alpha)
+            focus_rotation = focus_entity.get_rotation(alpha)
+        else:
+            focus_centre = (0, 0)
+            focus_rotation = 0
 
-        collided = False
-        position = self.player.get_position()
-        new_position = point_add(position, force)
-        debug(f"new position: {new_position}")
+        if self.level is not None:
+            self.draw_level(self.level, focus_centre, focus_rotation)
 
-        collided_lines = []
-
-        count = 0
-        for a, b in self.level0.iter_lines():
-            if line_collision(a, b, new_position, 1):
-                debug(f"collision at line : {a} {b}")
-                collided = True
-                normal = self.level0.get_normal(count)
-                projected_force = vector_project(force, normal)
-                force = vector_subtract(force, projected_force)
-                collided_lines.append(count)
-            count += 1
-
-        count = 0
-        for a in self.level0.get_bounds():
-            if point_collision(a, new_position, 1):
-                i_a, i_b = self.level0.get_connected_lines(count)
-                if i_a in collided_lines or i_b in collided_lines:
-                    debug(f"accounted for alre: {a}")
-                    continue
-                debug(f"collision at point: {a}")
-                collided = True
-                cur_dist = vector_from_points(a, new_position)
-                escape_force = vector_normalise(cur_dist) * 1
-                projected_force = vector_subtract(escape_force, cur_dist)
-                force = vector_add(force, projected_force)
-            count += 1
-
-        if len(collided_lines) >= 2:
-            force = (0, 0)
-
-        debug(str(force))
-
-        self.player.set_position((position[X] + force[X], position[Y] + force[Y]))
-        debug(f"position: {round(position[X], 3)}, {round(position[Y], 3)}")
-
-        fill = "O"
-        if collided:
-            fill = "X"
-
-        centre = self.transform_point((0, 0), (0, 0), 0)
-        self.draw_level(self.level0, self.player.get_position(), self.player.get_rotation())
-
-        if self.in_menu:
-            self.draw_menu(self.menu, self.menu_index)
-
-        self.draw_circle(self.transform_point((-1, -1), (0, 0), 0), self.transform_point((1, 1), (0, 0), 0), fill=fill)
+        for entity in self.entity_list:
+            self.draw_entity(entity, focus_centre, focus_rotation, alpha)
 
         self.swap_buffers()
+
+    def draw_entity(self, entity, centre, rotation, alpha):
+        if entity.get_display_type() == DisplayEntity.SPRITE:
+            entity_centre = entity.get_position(alpha)
+            entity_size   = entity.get_size()
+            entity_tl = self.transform_point(point_add(entity_centre, (-entity_size, -entity_size)), centre, 0)
+            entity_br = self.transform_point(point_add(entity_centre, (entity_size, entity_size)), centre, 0)
+            entity_sampler = entity.get_sampler()
+            self.draw_sprite(entity_tl, entity_br, entity_sampler)
+        elif entity.get_display_type() == DisplayEntity.TEXTURE:
+            pass
 
     def draw_level(self, level, centre, rotation):
         centred_bounds = []
@@ -247,23 +243,10 @@ class Main(ConsoleGUI):
 
 
     def key_press_event(self, event):
-        if self.in_menu:
-            if event.keysym == "Down":
-                if self.menu_index < self.menu.get_num_items() - 1:
-                    self.menu_index += 1
-            if event.keysym == "Up":
-                if self.menu_index > 0:
-                    self.menu_index -= 1
-        else:
-            if event.keysym in self.__inputs:
-                self.__inputs[event.keysym] = True
+        send_message(self.output_pipe, Message.KEY_PRESS, event.keysym)
 
     def key_release_event(self, event):
-        if event.keysym in self.__inputs:
-            self.__inputs[event.keysym] = False
-
-    def key_pressed(self, key):
-        return self.__inputs[key]
+        send_message(self.output_pipe, Message.KEY_RELEASE, event.keysym)
 
     def transform_point(self, point, centre, rotation):
         return point_transform(point, centre, -rotation, 20.0,

@@ -1,3 +1,5 @@
+import os
+
 from src.console import Console
 from src.geometry import *
 import util
@@ -9,11 +11,12 @@ ALIGN_BOTTOM = 1
 ALIGN_CENTER = 2
 
 class Sampler:
-    def __init__(self, filepath):
+    def __init__(self, filepath, trust_path=False):
         self.__width = 0
         self.__height = 0
         self.__data = None
-        filepath = util.abspath(filepath)
+        if not trust_path:
+            filepath = util.abspath(filepath)
         with open(filepath, 'rb') as file:
             index = -2
             while byte := file.read(1):
@@ -42,6 +45,13 @@ class Sampler:
         sx = round(x * self.__width)
         sy = round(y * self.__height)
         return self.get_pixel(sx, sy)
+
+def sampler_array(directory):
+    directory = util.abspath(directory)
+    samplers = []
+    for file in os.listdir(directory):
+        samplers.append(Sampler(os.path.join(directory, file), trust_path=True))
+    return samplers
 
 class Buffer:
     def __init__(self, width, height):
@@ -92,8 +102,6 @@ class ConsoleGUI(Console):
     def __init__(self, width, height, x, y):
         super().__init__(width, height, x, y, 10, fg="#22BB00")
         self.buffer = Buffer(self.get_width_chars(), self.get_height_chars())
-        self.count = 0
-        self.sampler = Sampler("/res/me.bin")
 
     def configure_event(self, event):
         self.buffer.resize(self.get_width_chars(), self.get_height_chars())
@@ -164,12 +172,16 @@ class ConsoleGUI(Console):
     def draw_sprite(self, a, b, sampler):
         width = b[X] - a[X]
         height = b[Y] - a[Y]
+        if width == 0 or height == 0:
+            return
+
         for y in range(height + 1):
             v = y / height
             for x in range(width + 1):
                 u = x / width
                 fill = sampler.sample(u, v)
-                self.buffer.try_set(x, y, fill)
+                if fill != ord(" "):
+                    self.buffer.try_set(x + a[X], y + a[Y], fill)
 
     def draw_rectangle(self, a, b, fill="#"):
         width = b[X] - a[X]

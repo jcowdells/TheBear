@@ -2,9 +2,10 @@ import json
 import math
 
 import util
-from src.render import Sampler
+from src.render import Sampler, sampler_array
 from src.geometry import X, Y, line_gradient, line_perpendicular, line_intersect, point_inside, line_square_length, \
-    HALF_PI, vector_from_points, vector_perpendicular, vector_normalise, line_collision, vector_add
+    HALF_PI, vector_from_points, vector_perpendicular, vector_normalise, line_collision, vector_add, vector_from_angle, \
+    point_add, point_collision, vector_project, vector_subtract, lerp_v, lerp_p
 
 BOUNDS   = "BOUNDS"
 TEXTURES = "TEXTURES"
@@ -15,12 +16,71 @@ INDICES = "indices"
 
 OUTLINE = "outline"
 
+ANIMATION = "animation"
+
+DURATION = "duration"
+SAMPLER_INDEX = "sampler_index"
+
+class EmptyAnimation:
+    def tick(self):
+        pass
+
+    def reset(self):
+        pass
+
+    def get_current_state(self):
+        return 0
+
+class Animation(EmptyAnimation):
+    def __init__(self, filepath):
+        filepath = util.abspath(filepath)
+        with open(filepath, "r") as file:
+            raw_json = json.load(file)
+
+        self._animation = {}
+        self._cur_ticks = 0
+
+        animation_steps = raw_json[ANIMATION]
+        self._total_ticks = 0
+        for step in animation_steps:
+            duration = step[DURATION]
+            sampler_index = step[SAMPLER_INDEX]
+            self._animation[self._total_ticks] = sampler_index
+            self._total_ticks += duration
+
+
+    def tick(self):
+        self._cur_ticks += 1
+        if self._cur_ticks >= self._total_ticks:
+            self._cur_ticks = 0
+
+    def reset(self):
+        self._cur_ticks = 0
+
+    def get_current_state(self):
+        keys = list(self._animation.keys())
+        for key in keys:
+            if key >= self._cur_ticks:
+                return self._animation[key]
+        return 0
+
 class Entity:
+    _id_counter = 0
+    SAMPLERS = None
+    DISPLAY_TYPE = None
+    ANIMATION_PATH = None
+
     def __init__(self, position, rotation, hitbox_radius):
+        self._id = Entity._id_counter
+        Entity._id_counter += 1
         self._position = position
         self._rotation = rotation
         self._hitbox_radius = hitbox_radius
         self.__square_radius = hitbox_radius * hitbox_radius
+        if self.ANIMATION_PATH is None:
+            self._animation = EmptyAnimation()
+        else:
+            self._animation = Animation(self.ANIMATION_PATH)
 
     def get_position(self):
         return self._position
@@ -44,10 +104,73 @@ class Entity:
         self._hitbox_radius = hitbox_radius
         self.__square_radius = hitbox_radius * hitbox_radius
 
-    def line_collision(self, a, b):
-        return line_collision(a, b, self._position, self.__square_radius)
+    def get_id(self):
+        return self._id
+
+    def get_animation(self):
+        return self._animation
+
+class DisplayEntity:
+    SPRITE  = 0
+    TEXTURE = 1
+
+    def __init__(self, position, rotation, size, samplers, entity_id, display_type):
+        self._prev_position = position
+        self._curr_position = position
+        self._next_position = position
+
+        self._prev_rotation = rotation
+        self._curr_rotation = rotation
+        self._next_rotation = rotation
+
+        self._size = size
+        self._samplers = samplers
+        self._sampler_index = 0
+        self._id = entity_id
+        self._display_type = display_type
+
+    def get_position(self, alpha):
+        return lerp_p(self._prev_position, self._curr_position, alpha)
+
+    def set_position(self, position):
+        self._next_position = position
+
+    def get_rotation(self, alpha):
+        return lerp_v(self._prev_rotation, self._curr_rotation, alpha)
+
+    def set_rotation(self, rotation):
+        self._next_rotation = rotation
+
+    def get_size(self):
+        return self._size
+
+    def get_sampler(self):
+        return self._samplers[self._sampler_index]
+
+    def set_sampler_index(self, sampler_index):
+        self._sampler_index = sampler_index
+
+    def get_id(self):
+        return self._id
+
+    def get_display_type(self):
+        return self._display_type
+
+    def update(self):
+        self._prev_position = self._curr_position
+        self._curr_position = self._next_position
+
+        self._prev_rotation = self._curr_rotation
+        self._curr_rotation = self._next_rotation
 
 class Player(Entity):
+    ROTATION_SPEED = 0.025
+    MOVEMENT_SPEED = 0.15
+
+    DISPLAY_TYPE = DisplayEntity.SPRITE
+    SAMPLERS = sampler_array("res/textures/player")
+    ANIMATION_PATH = "res/animations/player.json"
+
     def __init__(self, position, rotation):
         super().__init__(position, rotation, 1)
 
@@ -61,6 +184,37 @@ class Player(Entity):
         delta_x = distance * math.cos(self._rotation + HALF_PI)
         delta_y = distance * math.sin(self._rotation + HALF_PI)
         self._position = (self._position[X] + delta_x, self._position[Y] + delta_y)
+
+    def move_within_level(self, distance, level):
+        force = vector_from_angle(self._rotation, distance)
+        new_position = point_add(self._position, force)
+        collided_lines = []
+
+        count = 0
+        for a, b in level.iter_lines():
+            if line_collision(a, b, new_position, 1):
+                normal = level.get_normal(count)
+                projected_force = vector_project(force, normal)
+                force = vector_subtract(force, projected_force)
+                collided_lines.append(count)
+            count += 1
+
+        count = 0
+        for a in level.get_bounds():
+            if point_collision(a, new_position, 1):
+                i_a, i_b = level.get_connected_lines(count)
+                if i_a in collided_lines or i_b in collided_lines:
+                    continue
+                cur_dist = vector_from_points(a, new_position)
+                escape_force = vector_normalise(cur_dist) * 1
+                projected_force = vector_subtract(escape_force, cur_dist)
+                force = vector_add(force, projected_force)
+            count += 1
+
+        if len(collided_lines) >= 2:
+            force = (0, 0)
+
+        self._position = point_add(self._position, force)
 
 class Level:
     def __init__(self, filepath):

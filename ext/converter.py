@@ -34,7 +34,9 @@ def image_to_bytes(image):
 
     for y in range(height):
         for x in range(width):
-            image_bytes[y * height + x] = image_get_brightness(pixels, x, y)
+            print(get_gradient_color(get_brightness_float(image_get_brightness(pixels, x, y))), end='')
+            image_bytes[y * width + x] = image_get_brightness(pixels, x, y)
+        print("\n")
 
     return image_bytes
 
@@ -66,6 +68,7 @@ def image_to_compressed_bytes(image):
     return compressed_bytes
 
 def write_bin_file(filepath, bin_data):
+    print(bin_data)
     with open(filepath, "wb") as file:
         file.write(bin_data)
 
