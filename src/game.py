@@ -3,9 +3,11 @@ import math
 
 import util
 from src.render import Sampler, sampler_array
-from src.geometry import X, Y, line_gradient, line_perpendicular, line_intersect, point_inside, line_square_length, \
+from src.geometry import X, Y, A, B, line_gradient, line_perpendicular, line_intersect, point_inside, \
+    line_square_length, \
     HALF_PI, vector_from_points, vector_perpendicular, vector_normalise, line_collision, vector_add, vector_from_angle, \
-    point_add, point_collision, vector_project, vector_subtract, lerp_v, lerp_p
+    point_add, point_collision, vector_project, vector_subtract, lerp_v, lerp_p, vector_angle, vector_multiply, \
+    is_path_obstructed, line_angle
 
 BOUNDS   = "BOUNDS"
 TEXTURES = "TEXTURES"
@@ -62,9 +64,11 @@ class Animation(EmptyAnimation):
         for key in keys:
             if key >= self._cur_ticks:
                 return self._animation[key]
-        return 0
+        return self._animation[keys[-1]]
 
 class Entity:
+    MOVEMENT_SPEED = 0.15
+
     _id_counter = 0
     SAMPLERS = None
     DISPLAY_TYPE = None
@@ -76,7 +80,7 @@ class Entity:
         self._position = position
         self._rotation = rotation
         self._hitbox_radius = hitbox_radius
-        self.__square_radius = hitbox_radius * hitbox_radius
+        self._square_radius = hitbox_radius * hitbox_radius
         if self.ANIMATION_PATH is None:
             self._animation = EmptyAnimation()
         else:
@@ -97,12 +101,27 @@ class Entity:
     def rotate(self, rotation):
         self._rotation += rotation
 
+    def look_at(self, position):
+        self._rotation = line_angle(self._position, position)
+
+    def move_towards(self, target, level):
+        route = level.find_shortest_path(self._position, target, 1)
+        if route:
+            next_target = route[1].point
+            self.look_at(next_target)
+            self.move(-self.MOVEMENT_SPEED)
+
+    def move(self, distance):
+        delta_x = distance * math.cos(self._rotation + HALF_PI)
+        delta_y = distance * math.sin(self._rotation + HALF_PI)
+        self._position = (self._position[X] + delta_x, self._position[Y] + delta_y)
+
     def get_hitbox_radius(self):
         return self._hitbox_radius
 
     def set_hitbox_radius(self, hitbox_radius):
         self._hitbox_radius = hitbox_radius
-        self.__square_radius = hitbox_radius * hitbox_radius
+        self._square_radius = hitbox_radius * hitbox_radius
 
     def get_id(self):
         return self._id
@@ -180,11 +199,6 @@ class Player(Entity):
     def get_distance(self):
         return math.sqrt(self._position[X]**2 + self._position[Y]**2)
 
-    def move(self, distance):
-        delta_x = distance * math.cos(self._rotation + HALF_PI)
-        delta_y = distance * math.sin(self._rotation + HALF_PI)
-        self._position = (self._position[X] + delta_x, self._position[Y] + delta_y)
-
     def move_within_level(self, distance, level):
         force = vector_from_angle(self._rotation, distance)
         new_position = point_add(self._position, force)
@@ -192,7 +206,7 @@ class Player(Entity):
 
         count = 0
         for a, b in level.iter_lines():
-            if line_collision(a, b, new_position, 1):
+            if line_collision(a, b, new_position, self._square_radius):
                 normal = level.get_normal(count)
                 projected_force = vector_project(force, normal)
                 force = vector_subtract(force, projected_force)
@@ -201,12 +215,12 @@ class Player(Entity):
 
         count = 0
         for a in level.get_bounds():
-            if point_collision(a, new_position, 1):
+            if point_collision(a, new_position, self._square_radius):
                 i_a, i_b = level.get_connected_lines(count)
                 if i_a in collided_lines or i_b in collided_lines:
                     continue
                 cur_dist = vector_from_points(a, new_position)
-                escape_force = vector_normalise(cur_dist) * 1
+                escape_force = vector_normalise(cur_dist) * self._square_radius
                 projected_force = vector_subtract(escape_force, cur_dist)
                 force = vector_add(force, projected_force)
             count += 1
@@ -215,6 +229,59 @@ class Player(Entity):
             force = (0, 0)
 
         self._position = point_add(self._position, force)
+
+class Bear(Entity):
+    MOVEMENT_SPEED = 0.075
+
+    DISPLAY_TYPE = DisplayEntity.TEXTURE
+    SAMPLERS = sampler_array("res/textures/bear")
+    ANIMATION_PATH = "res/animations/bear.json"
+
+    def __init__(self, position, rotation):
+        super().__init__(position, rotation, 1)
+
+class Path:
+    def __init__(self, point):
+        self.point = point
+        self._paths = []
+
+    def add_path(self, path):
+        self._paths.append(path)
+        return self
+
+    def find_shortest_path(self, end):
+        shortest_distance = math.inf
+        shortest_path = None
+        for route in self.find_routes(end):
+            current_distance = 0
+            current_point = self.point
+            for path in route:
+                current_distance += line_square_length(current_point, path.point)
+                current_point = path.point
+            if current_distance < shortest_distance:
+                shortest_distance = current_distance
+                shortest_path = route
+        return shortest_path
+
+    def find_routes(self, end):
+        for route in self.iter_routes(end):
+            yield tuple(util.flatten(route))
+
+    def iter_routes(self, end):
+        if self.point == end:
+            yield self
+        for path in self._paths:
+            for route in path.iter_routes(end):
+                yield self, route
+
+    def string(self, depth):
+        out = (" " * depth) + str(self.point) + "\n"
+        for path in self._paths:
+            out += path.string(depth + 1)
+        return out
+
+    def __str__(self):
+        return self.string(0)
 
 class Level:
     def __init__(self, filepath):
@@ -229,6 +296,9 @@ class Level:
             options = raw_json[OPTIONS]
 
         self.__bounds = []
+        self.__pathfind_point_indices = []
+        self.__pathfind_normals = []
+        self.__pathfind_angles = []
         self.__connected_lines = []
         self.__normals = []
         used_samplers = {}
@@ -248,6 +318,34 @@ class Level:
             v = vector_from_points(b, a)
             v = vector_normalise(v)
             self.__normals.append(v)
+
+        lines = list(self.iter_lines())
+        for i in range(self.__num_bounds):
+            line_a = lines[i - 1]
+            line_b = lines[i]
+
+            vec_a = vector_from_points(line_a[A], line_a[B])
+            vec_b = vector_from_points(line_b[A], line_b[B])
+
+            angle = vector_angle(vec_a, vec_b)
+            if angle < 0:
+                self.__pathfind_point_indices.append(i)
+                vec_a = vector_perpendicular(self.get_normal(i - 1))
+                vec_b = vector_perpendicular(self.get_normal(i))
+
+                line_ea = point_add(line_a[A], vec_a), point_add(line_a[B], vec_a)
+                line_eb = point_add(line_b[A], vec_b), point_add(line_b[B], vec_b)
+
+                mx1, my1, c1 = line_gradient(line_ea[A], line_ea[B])
+                mx2, my2, c2 = line_gradient(line_eb[A], line_eb[B])
+                intersect = line_intersect(mx1, my1, c1, mx2, my2, c2)
+                point = self.get_bound(i)
+                normal = vector_from_points(point, intersect)
+
+                self.__pathfind_normals.append(normal)
+                self.__pathfind_angles.append((math.pi - angle) / 2)
+
+        self.__num_pathfinders = len(self.__pathfind_point_indices)
 
         texture_file = "<None>"
         try:
@@ -283,6 +381,51 @@ class Level:
             else:
                 b = self.__bounds[i + 1]
             yield a, b
+
+    def get_pathfind_point(self, pathfind_index, hitbox_radius):
+        point_index = self.__pathfind_point_indices[pathfind_index]
+        point = self.get_bound(point_index)
+        normal = self.__pathfind_normals[pathfind_index]
+        normal = vector_multiply(normal, hitbox_radius)
+        point = point_add(point, normal)
+        return point
+
+    def iter_pathfind_points(self, hitbox_radius):
+        for i in range(self.__num_pathfinders):
+            yield self.get_pathfind_point(i, hitbox_radius)
+
+    def find_shortest_path(self, start, end, hitbox_radius):
+        path = Path(start)
+        self.find_paths(start, end, hitbox_radius, path)
+        return path.find_shortest_path(end)
+
+    def find_paths(self, start, end, hitbox_radius, path, visited_indices=None):
+        if not self.is_path_obstructed(start, end, hitbox_radius):
+            return path.add_path(Path(end))
+
+        if visited_indices is None:
+            visited_indices = []
+
+        for i in range(self.__num_pathfinders):
+            if i in visited_indices:
+                continue
+            point = self.get_pathfind_point(i, hitbox_radius)
+            if not self.is_path_obstructed(start, point, hitbox_radius):
+                updated_indices = list(visited_indices)
+                updated_indices.append(i)
+                sub_path = Path(point)
+                sub_path = self.find_paths(point, end, hitbox_radius, sub_path, updated_indices)
+                path.add_path(sub_path)
+
+        return path
+
+    def is_path_obstructed(self, start, end, hitbox_radius):
+        obstructed = False
+        for line in self.iter_lines():
+            if is_path_obstructed(start, end, line, hitbox_radius):
+                obstructed = True
+                break
+        return obstructed
 
     def get_connected_lines(self, bound_index):
         i_b = bound_index

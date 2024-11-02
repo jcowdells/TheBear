@@ -8,6 +8,9 @@ Y = 1
 U = 0
 V = 1
 
+A = 0
+B = 1
+
 def line_gradient(a, b):
     d_x = a[X] - b[X]
     d_y = a[Y] - b[Y]
@@ -52,6 +55,8 @@ def line_perpendicular(mx, my, p):
 
 def line_intersect(mx1, my1, c1, mx2, my2, c2):
       d = mx1 * my2 - mx2 * my1
+      if d == 0:
+          return math.inf, math.inf
       x = (my1 * c2 - my2 * c1) / d
       y = (mx2 * c1 - mx1 * c2) / d
       return x, y
@@ -71,6 +76,11 @@ def line_collision(a, b, p, r):
         return line_square_length(ip, p) < r
     else:
         return False
+
+def line_angle(a, b):
+    delta_x = b[X] - a[X]
+    delta_y = b[Y] - a[Y]
+    return math.atan2(delta_y, delta_x) + HALF_PI
 
 def triangle_signed_area(a, b, c):
     area = (b[X] - a[X]) * (c[Y] - a[Y]) - (b[Y] - a[Y]) * (c[X] - a[X])
@@ -138,7 +148,12 @@ def point_transform(point, centre, rotation, max_view, screen_width_px, screen_h
         point = point[X] / scale, point[Y]
     point = point_add(point, (1, 1))
     point = point_divide(point, 2)
-    return round(point[X] * screen_width_ch), round(point[Y] * screen_height_ch)
+    try:
+        return round(point[X] * screen_width_ch), round(point[Y] * screen_height_ch)
+    except ValueError:
+        return -1, -1
+    except OverflowError:
+        return -1, -1
 
 def point_inside(a, b, p):
     in_x = min(a[X], b[X]) <= p[X] <= max(a[X], b[X])
@@ -171,6 +186,9 @@ def vector_normalise(v):
 def vector_dot(v, q):
     return v[X] * q[X] + v[Y] * q[Y]
 
+def vector_determinant(v, q):
+    return v[X] * q[Y] - v[Y] * q[X]
+
 def vector_project(v, q):
     mul = vector_dot(v, q)
     return v[X] - q[X] * mul, v[Y] - q[Y] * mul
@@ -186,6 +204,23 @@ def vector_multiply(v, m):
 
 def vector_perpendicular(v):
     return v[Y], -v[X]
+
+def vector_angle(v, q):
+    dot = vector_dot(v, q)
+    det = vector_determinant(v, q)
+    return math.atan2(det, dot)
+
+def is_path_obstructed(a, b, l, r):
+    mx1, my1, c1 = line_gradient(a, b)
+    mx2, my2, c2 = line_gradient(*l)
+    intersect = line_intersect(mx1, my1, c1, mx2, my2, c2)
+    if not point_inside(a, b, intersect):
+        return False
+    if point_inside(*l, intersect):
+        return True
+    else:
+        sr = r * r
+        return line_square_length(l[A], intersect) < sr or line_square_length(l[B], intersect) < sr
 
 def lerp_p(a, b, t):
     return lerp_v(a[X], b[X], t), lerp_v(a[Y], b[Y], t)

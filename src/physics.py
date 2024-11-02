@@ -1,6 +1,6 @@
 import time
 
-from src.game import DisplayEntity, Player, Level
+from src.game import DisplayEntity, Player, Level, Bear
 from src.util import Message
 
 UP = "Up"
@@ -44,6 +44,10 @@ def physics_thread(input_pipe, output_pipe):
     level = Level("res/level/level0.json")
     send_message(output_pipe, Message.LEVEL_CHANGED, level)
     player = create_entity(Player, entity_list, output_pipe, (0, 0), 0)
+    bear1 = create_entity(Bear, entity_list, output_pipe, (-5, -5), 0)
+    bear2 = create_entity(Bear, entity_list, output_pipe, (5, -5), 0)
+    bear3 = create_entity(Bear, entity_list, output_pipe, (-5, 0), 0)
+    bear4 = create_entity(Bear, entity_list, output_pipe, (5, 5), 0)
     running = True
     while running:
         while input_pipe.poll():
@@ -73,6 +77,21 @@ def physics_thread(input_pipe, output_pipe):
                 player.move_within_level(-Player.MOVEMENT_SPEED, level)
             if inputs[DOWN]:
                 player.move_within_level(Player.MOVEMENT_SPEED, level)
+
+            bear1.move_towards(player.get_position(), level)
+            bear1.get_animation().tick()
+
+            bear2.move_towards(player.get_position(), level)
+            bear2.MOVEMENT_SPEED = 0.025
+            bear2.get_animation().tick()
+
+            bear3.move_towards(player.get_position(), level)
+            bear3.MOVEMENT_SPEED = 0.015
+            bear3.get_animation().tick()
+
+            bear4.move_towards(player.get_position(), level)
+            bear4.MOVEMENT_SPEED = 0.10
+            bear4.get_animation().tick()
 
             if inputs[UP] or inputs[DOWN]:
                 player.get_animation().tick()

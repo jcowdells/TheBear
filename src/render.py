@@ -126,7 +126,8 @@ class ConsoleGUI(Console):
                 if triangle_contains(a, b, c, (x, y)):
                     u, v = triangle_uv(a, b, c, uv_a, uv_b, uv_c, (x, y))
                     fill = sampler.sample(u, v)
-                    self.buffer.try_set(x, y, fill)
+                    if fill != ord(" "):
+                        self.buffer.try_set(x, y, fill)
 
     def draw_character(self, a, fill="#"):
         self.buffer.try_set(a[X], a[Y], ord(fill))

@@ -3,11 +3,12 @@ import time
 import textwrap
 from multiprocessing import Process, Pipe
 
-from src.render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, ALIGN_BOTTOM
+from src.render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, ALIGN_BOTTOM, Sampler
 from src.geometry import X, Y, point_rotate, point_transform, line_gradient, line_perpendicular, line_intersect, \
     point_inside, line_square_length, point_subtract, vector_from_angle, vector_project, vector_subtract, point_add, \
-    line_collision, point_collision, point_normal, vector_from_points, vector_normalise, vector_add
-from src.game import Level, Player, Menu, DisplayEntity
+    line_collision, point_collision, point_normal, vector_from_points, vector_normalise, vector_add, is_path_obstructed, \
+    HALF_PI
+from src.game import Level, Player, Menu, DisplayEntity, Path
 import cProfile
 from src.physics import send_message, recv_message, physics_thread, get_entity, TIMESTEP
 from src.util import Message
@@ -102,6 +103,10 @@ class Main(ConsoleGUI):
         if self.level is not None:
             self.draw_level(self.level, focus_centre, focus_rotation)
 
+
+        test_point = self.transform_point((-5, -5), focus_centre, focus_rotation)
+        self.draw_character(test_point, "Y")
+
         for entity in self.entity_list:
             self.draw_entity(entity, focus_centre, focus_rotation, alpha)
 
@@ -111,12 +116,30 @@ class Main(ConsoleGUI):
         if entity.get_display_type() == DisplayEntity.SPRITE:
             entity_centre = entity.get_position(alpha)
             entity_size   = entity.get_size()
-            entity_tl = self.transform_point(point_add(entity_centre, (-entity_size, -entity_size)), centre, 0)
-            entity_br = self.transform_point(point_add(entity_centre, (entity_size, entity_size)), centre, 0)
+            entity_tlr = point_rotate((entity_size, entity_size), rotation + math.pi)
+            entity_brr = point_rotate((entity_size, entity_size), rotation)
+            entity_tl = self.transform_point(point_add(entity_centre, entity_tlr), centre, rotation)
+            entity_br = self.transform_point(point_add(entity_centre, entity_brr), centre, rotation)
             entity_sampler = entity.get_sampler()
             self.draw_sprite(entity_tl, entity_br, entity_sampler)
         elif entity.get_display_type() == DisplayEntity.TEXTURE:
-            pass
+            entity_centre = entity.get_position(alpha)
+            entity_rotation = entity.get_rotation(alpha)
+            entity_size = entity.get_size()
+
+            entity_ar = point_rotate((entity_size, entity_size), entity_rotation + math.pi)
+            entity_br = point_rotate((entity_size, entity_size), entity_rotation - HALF_PI)
+            entity_cr = point_rotate((entity_size, entity_size), entity_rotation)
+            entity_dr = point_rotate((entity_size, entity_size), entity_rotation + HALF_PI)
+
+            entity_a = self.transform_point(point_add(entity_centre, entity_ar), centre, rotation)
+            entity_b = self.transform_point(point_add(entity_centre, entity_br), centre, rotation)
+            entity_c = self.transform_point(point_add(entity_centre, entity_cr), centre, rotation)
+            entity_d = self.transform_point(point_add(entity_centre, entity_dr), centre, rotation)
+
+            entity_sampler = entity.get_sampler()
+            self.draw_sampler(entity_a, entity_b, entity_c, (0, 0), (1, 0), (1, 1), entity_sampler)
+            self.draw_sampler(entity_a, entity_c, entity_d, (0, 0), (1, 1), (0, 1), entity_sampler)
 
     def draw_level(self, level, centre, rotation):
         centred_bounds = []
@@ -255,10 +278,7 @@ class Main(ConsoleGUI):
                                )
 
     def return_event(self):
-        if self.prev_input == "open":
-            self.in_menu = True
-        elif self.prev_input == "close":
-            self.in_menu = False
+        send_message(self.output_pipe, Message.COMMAND, self.prev_input)
 
 if __name__ == "__main__":
     main_game = Main()
