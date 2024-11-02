@@ -3,14 +3,16 @@ import time
 import textwrap
 from multiprocessing import Process, Pipe
 
-from src.render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, ALIGN_BOTTOM, Sampler
+from src import util
+from src.render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, ALIGN_BOTTOM, Sampler, \
+    sampler_array
 from src.geometry import X, Y, point_rotate, point_transform, line_gradient, line_perpendicular, line_intersect, \
     point_inside, line_square_length, point_subtract, vector_from_angle, vector_project, vector_subtract, point_add, \
     line_collision, point_collision, point_normal, vector_from_points, vector_normalise, vector_add, is_path_obstructed, \
     HALF_PI
 from src.game import Level, Player, Menu, DisplayEntity, Path
 import cProfile
-from src.physics import send_message, recv_message, physics_thread, get_entity, TIMESTEP
+from src.physics import send_message, recv_message, physics_thread, get_by_id, TIMESTEP, GameState
 from src.util import Message
 
 UP = "Up"
@@ -19,6 +21,10 @@ LEFT = "Left"
 RIGHT = "Right"
 
 debug_counter = 0
+
+MAINMENU_ICON_RATIO = 4.72
+MAINMENU_TEXT_DEPTH = 0.333
+MAINMENU_MAX_DEPTH  = 0.922
 
 class Main(ConsoleGUI):
     def __init__(self):
@@ -34,8 +40,18 @@ class Main(ConsoleGUI):
         self.input_pipe, output_pipe  = Pipe()
         self.physics = Process(target=physics_thread, args=(input_pipe, output_pipe))
 
+        self.main_menu_sampler = Sampler("res/textures/mainmenu.tex")
+        self.main_menu_icons = sampler_array("res/textures/mainmenu_icons")
+        self.main_menu_num_icons = len(self.main_menu_icons)
+
+        self.game_state = GameState.MAIN_MENU
+        self.settings = {
+            "MAIN_MENU_SELECTOR": 0
+        }
         self.level = None
         self.entity_list = []
+        self.menu_list = []
+        self.text_box_list = []
         self.focus_id = 0
 
     def on_begin(self):
@@ -61,26 +77,57 @@ class Main(ConsoleGUI):
         while self.input_pipe.poll():
             try:
                 message, data = recv_message(self.input_pipe)
-                if message == Message.LEVEL_CHANGED:
+                if message == Message.EXIT:
+                    self.end()
+                elif message == Message.LEVEL_CHANGED:
                     self.level = data
-                if message == Message.ENTITY_CREATED:
+                elif message == Message.ENTITY_CREATED:
                     self.entity_list.append(data)
-                if message == Message.ENTITY_UPDATE:
+                elif message == Message.ENTITY_UPDATE:
                     entity_id, position, rotation = data
-                    entity = get_entity(entity_id, self.entity_list)
+                    entity = get_by_id(entity_id, self.entity_list)
                     entity.set_position(position)
                     entity.set_rotation(rotation)
-                if message == Message.ENTITY_ANIMATE:
+                elif message == Message.ENTITY_ANIMATE:
                     entity_id, sampler_index = data
-                    entity = get_entity(entity_id, self.entity_list)
+                    entity = get_by_id(entity_id, self.entity_list)
                     entity.set_sampler_index(sampler_index)
-                if message == Message.FOCUS_ID:
+                elif message == Message.ENTITY_VISIBLE:
+                    entity_id, visible = data
+                    entity = get_by_id(entity_id, self.entity_list)
+                    entity.set_visible(visible)
+                elif message == Message.FOCUS_ID:
                     self.focus_id = data
-                if message == Message.DELTA:
+                elif message == Message.DELTA:
                     self.prev_delta_time = time.perf_counter()
                     self.delta = data
                     for entity in self.entity_list:
                         entity.update()
+                elif message == Message.MENU_CREATED:
+                    self.menu_list.append(data)
+                elif message == Message.MENU_ADD_ITEM:
+                    menu_id, item = data
+                    menu = get_by_id(menu_id, self.menu_list)
+                    menu.add_item(*item)
+                elif message == Message.MENU_CHANGE_INDEX:
+                    menu_id, index = data
+                    menu = get_by_id(menu_id, self.menu_list)
+                    menu.set_active_index(index)
+                elif message == Message.MENU_VISIBLE:
+                    menu_id, visible = data
+                    menu = get_by_id(menu_id, self.menu_list)
+                    menu.set_visible(visible)
+                elif message == Message.TEXT_BOX_CREATED:
+                    self.text_box_list.append(data)
+                elif message == Message.TEXT_BOX_VISIBLE:
+                    text_box_id, visible = data
+                    text_box = get_by_id(text_box_id, self.text_box_list)
+                    text_box.set_visible(visible)
+                elif message == Message.GAME_STATE_CHANGED:
+                    self.game_state = data
+                elif message == Message.UPDATE_SETTING:
+                    key, value = data
+                    self.settings[key] = value
             except EOFError:
                 return
 
@@ -92,23 +139,30 @@ class Main(ConsoleGUI):
         debug(f"     alpha {alpha}")
         debug(f"{self.get_width_chars()} {self.get_height_chars()}")
 
-        focus_entity = get_entity(self.focus_id, self.entity_list)
+        focus_entity = get_by_id(self.focus_id, self.entity_list)
         if focus_entity is not None:
             focus_centre = focus_entity.get_position(alpha)
             focus_rotation = focus_entity.get_rotation(alpha)
         else:
             focus_centre = (0, 0)
             focus_rotation = 0
+        if self.game_state == GameState.MAIN_MENU:
+            self.draw_main_menu()
+        elif self.game_state == GameState.GAME:
+            if self.level is not None:
+                self.draw_level(self.level, focus_centre, focus_rotation)
 
-        if self.level is not None:
-            self.draw_level(self.level, focus_centre, focus_rotation)
+            for entity in self.entity_list:
+                if entity.get_visible():
+                    self.draw_entity(entity, focus_centre, focus_rotation, alpha)
 
+        for menu in self.menu_list:
+            if menu.get_visible():
+                self.draw_menu(menu)
 
-        test_point = self.transform_point((-5, -5), focus_centre, focus_rotation)
-        self.draw_character(test_point, "Y")
-
-        for entity in self.entity_list:
-            self.draw_entity(entity, focus_centre, focus_rotation, alpha)
+        for text_box in self.text_box_list:
+            if text_box.get_visible():
+                self.draw_text_box(text_box)
 
         self.swap_buffers()
 
@@ -169,11 +223,7 @@ class Main(ConsoleGUI):
 
             self.draw_line(bound_a, bound_b, fill=outline)
 
-    def draw_menu(self, menu, active_index):
-        width = self.get_width_chars()
-        height = self.get_height_chars()
-        menu_tl = round(width * 0.1), round(height * 0.1)
-        menu_br = round(width * 0.9), round(height * 0.9)
+    def draw_box(self, menu_tl, menu_br):
         menu_tr = menu_br[X], menu_tl[Y]
         menu_bl = menu_tl[X], menu_br[Y]
 
@@ -189,11 +239,58 @@ class Main(ConsoleGUI):
         self.draw_character(menu_br, fill="+")
         self.draw_character(menu_bl, fill="+")
 
+    def draw_title_box(self, menu_tl, menu_br, title):
+        menu_tr = menu_br[X], menu_tl[Y]
+        self.draw_box(menu_tl, menu_br)
         self.draw_line((menu_tl[X], menu_tl[Y] + 2), (menu_tr[X], menu_tr[Y] + 2), fill="-")
         self.draw_character((menu_tl[X], menu_tl[Y] + 2), fill="+")
         self.draw_character((menu_tr[X], menu_tr[Y] + 2), fill="+")
 
-        self.draw_text((width // 2, menu_tl[Y] + 1), text=menu.title)
+        title_pos = (menu_tl[X] + menu_br[X]) // 2, menu_tl[Y] + 1
+        self.draw_text(title_pos, title, align_x=ALIGN_CENTER, align_y=ALIGN_TOP, justify=ALIGN_CENTER)
+
+    def draw_text_box(self, text_box):
+        content = text_box.get_content()
+        width = self.get_width_chars()
+        height = self.get_height_chars()
+        box_width = text_box.get_max_width()
+        box_height = text_box.get_max_height()
+        max_width = round(width * box_width)
+        max_height = round(height * box_height)
+        if max_width > 4 and max_height > 6:
+            display = "\n".join(textwrap.wrap(content, max_width - 4)[:max_height - 6])
+        else:
+            display = ""
+        text_width, text_height = util.find_string_size(display)
+
+        if text_width > max_width - 4:
+            box_width = max_width
+        else:
+            box_width = text_width + 3
+
+        if text_height > max_height - 6:
+            box_height = max_height
+        else:
+            box_height = text_height + 5
+
+        if max_width > 0:
+            half_box_width = box_width / width * 0.5
+            half_box_height = box_height / height * 0.5
+            box_tl = round(width * (0.5 - half_box_width)), round(height * (0.5 - half_box_height))
+            box_br = round(box_tl[X] + box_width), round(box_tl[Y] + box_height)
+            self.draw_title_box(box_tl, box_br, text_box.get_title())
+            text_tl = box_tl[X] + 2, box_tl[Y] + 4
+            self.draw_text(text_tl, display, align_x=ALIGN_LEFT, align_y=ALIGN_TOP, justify=ALIGN_LEFT)
+
+    def draw_menu(self, menu):
+        active_index = menu.get_active_index()
+        width = self.get_width_chars()
+        height = self.get_height_chars()
+        menu_tl = round(width * 0.1), round(height * 0.1)
+        menu_br = round(width * 0.9), round(height * 0.9)
+        menu_tr = menu_br[X], menu_tl[Y]
+
+        self.draw_title_box(menu_tl, menu_br, menu.get_title())
         self.draw_text((menu_tr[X] - 1, menu_tr[Y] + 1), text=f"{active_index + 1}/{menu.get_num_items()}",
                        align_x=ALIGN_RIGHT, justify=ALIGN_RIGHT)
 
@@ -260,10 +357,57 @@ class Main(ConsoleGUI):
 
                 cur_y += len_wrap + 1
 
-        self.draw_text((split_a[X] + 2, split_a[Y] + 2),
-                       "\n".join(textwrap.wrap(menu.get_item_description(active_index), desc_width)[:desc_height]),
-                        align_x=ALIGN_LEFT, align_y=ALIGN_TOP, justify=ALIGN_LEFT)
+        if desc_width > 0:
+            self.draw_text((split_a[X] + 2, split_a[Y] + 2),
+                           "\n".join(textwrap.wrap(menu.get_item_description(active_index), desc_width)[:desc_height]),
+                            align_x=ALIGN_LEFT, align_y=ALIGN_TOP, justify=ALIGN_LEFT)
 
+    def draw_main_menu(self):
+        width = self.get_width()
+        width_chars = self.get_width_chars()
+        height = self.get_height()
+        height_chars = self.get_height_chars()
+        if self.get_width() > self.get_height():
+            ratio = height / width
+            offset = (width_chars - width_chars * ratio) * 0.5
+            bg_tl = round(offset), 0
+            bg_br = round(width_chars - offset), height_chars
+        else:
+            ratio = width / height
+            offset = (height_chars - height_chars * ratio) * 0.5
+            bg_tl = 0, round(offset)
+            bg_br = width_chars, round(height_chars - offset)
+        self.draw_sprite(bg_tl, bg_br, self.main_menu_sampler)
+
+        background_height = bg_br[Y] - bg_tl[Y]
+        icons_start_y = bg_tl[Y] + background_height * MAINMENU_TEXT_DEPTH
+        icons_end_y = bg_tl[Y] + background_height * MAINMENU_MAX_DEPTH
+        icons_step_y = (icons_end_y - icons_start_y) * (1 / self.main_menu_num_icons)
+        icons_width = round(icons_step_y * MAINMENU_ICON_RATIO)
+        icons_start_x = (self.get_width_chars() - icons_width) // 2
+        icons_curr_y = icons_start_y
+
+        box_tl = None
+        box_br = None
+
+        points = []
+
+        for i in range(self.main_menu_num_icons):
+            point_a = icons_start_x, round(icons_curr_y)
+            point_b = icons_start_x + icons_width, round(icons_curr_y + icons_step_y)
+            points.append((point_a, point_b))
+            if i == self.settings["MAIN_MENU_SELECTOR"]:
+                box_tl = point_a[X] - 1, point_a[Y] - 1
+                box_br = point_b[X] + 1, point_b[Y]
+            icons_curr_y = round(icons_curr_y + icons_step_y)
+
+        if box_tl is not None and box_br is not None:
+            self.draw_box(box_tl, box_br)
+
+        count = 0
+        for icon in self.main_menu_icons:
+            self.draw_sprite(*points[count], icon)
+            count += 1
 
     def key_press_event(self, event):
         send_message(self.output_pipe, Message.KEY_PRESS, event.keysym)
@@ -276,6 +420,14 @@ class Main(ConsoleGUI):
                                self.get_width(), self.get_height(),
                                self.get_width_chars(), self.get_height_chars()
                                )
+
+    def input_begin_event(self):
+        print("begin")
+        send_message(self.output_pipe, Message.INPUT_BEGIN, 0)
+
+    def input_end_event(self):
+        print("end")
+        send_message(self.output_pipe, Message.INPUT_END, 0)
 
     def return_event(self):
         send_message(self.output_pipe, Message.COMMAND, self.prev_input)

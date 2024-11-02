@@ -88,9 +88,14 @@ def triangle_signed_area(a, b, c):
 
 def triangle_uvw(a, b, c, p):
     d = (b[Y] - c[Y]) * (a[X] - c[X]) + (c[X] - b[X]) * (a[Y] - c[Y])
-    u = ((b[Y] - c[Y]) * (p[X] - c[X]) + (c[X] - b[X]) * (p[Y] - c[Y])) / d
-    v = ((c[Y] - a[Y]) * (p[X] - c[X]) + (a[X] - c[X]) * (p[Y] - c[Y])) / d
-    w = 1 - u - v
+    if d != 0:
+        u = ((b[Y] - c[Y]) * (p[X] - c[X]) + (c[X] - b[X]) * (p[Y] - c[Y])) / d
+        v = ((c[Y] - a[Y]) * (p[X] - c[X]) + (a[X] - c[X]) * (p[Y] - c[Y])) / d
+        w = 1 - u - v
+    else:
+        u = 1
+        v = 0
+        w = 0
     return u, v, w
 
 def triangle_bbox(a, b, c):

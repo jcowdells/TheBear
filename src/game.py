@@ -133,7 +133,7 @@ class DisplayEntity:
     SPRITE  = 0
     TEXTURE = 1
 
-    def __init__(self, position, rotation, size, samplers, entity_id, display_type):
+    def __init__(self, position, rotation, size, samplers, entity_id, display_type, visible):
         self._prev_position = position
         self._curr_position = position
         self._next_position = position
@@ -147,6 +147,7 @@ class DisplayEntity:
         self._sampler_index = 0
         self._id = entity_id
         self._display_type = display_type
+        self._visible = visible
 
     def get_position(self, alpha):
         return lerp_p(self._prev_position, self._curr_position, alpha)
@@ -174,6 +175,12 @@ class DisplayEntity:
 
     def get_display_type(self):
         return self._display_type
+
+    def get_visible(self):
+        return self._visible
+
+    def set_visible(self, visible):
+        self._visible = visible
 
     def update(self):
         self._prev_position = self._curr_position
@@ -453,11 +460,50 @@ class Level:
     def get_outline(self):
         return self.__outline
 
+class TextBox:
+    _id_counter = 0
+
+    def __init__(self, title, content, visible=True, max_width=0.5, max_height=0.5):
+        self._title = title
+        self._content = content
+        self._max_width = max_width
+        self._max_height = max_height
+        self._id = TextBox._id_counter
+        self._visible = visible
+        TextBox._id_counter += 1
+
+    def get_title(self):
+        return self._title
+
+    def get_content(self):
+        return self._content
+
+    def get_max_width(self):
+        return self._max_width
+
+    def get_max_height(self):
+        return self._max_height
+
+    def get_id(self):
+        return self._id
+
+    def get_visible(self):
+        return self._visible
+
 class Menu:
-    def __init__(self, title, default_description=""):
-        self.title = title
+    _id_counter = 0
+
+    def __init__(self, title, default_description="", visible=True):
+        self._title = title
+        self._active_index = 0
+        self._id = Menu._id_counter
+        Menu._id_counter += 1
         self.__default_description = default_description
         self.__items = []
+        self._visible = visible
+
+    def get_title(self):
+        return self._title
 
     def add_item(self, item_name, item_description=None):
         self.__items.append((item_name, item_description))
@@ -484,3 +530,27 @@ class Menu:
             item = self.__items[i]
             if item_name == item[0]:
                 return i
+
+    def get_id(self):
+        return self._id
+
+    def get_visible(self):
+        return self._visible
+
+    def set_visible(self, visible):
+        self._visible = visible
+
+    def get_active_index(self):
+        return self._active_index
+
+    def set_active_index(self, index):
+        self._active_index = index
+
+class MenuInterface:
+    def __init__(self, num_items, active_index, menu_id):
+        self.num_items = num_items
+        self.active_index = active_index
+        self._menu_id = menu_id
+
+    def get_id(self):
+        return self._menu_id

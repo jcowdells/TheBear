@@ -21,6 +21,7 @@ class Console(Window):
         self.__stdout = Text(self, bg=bg, fg=fg, font_name="TkFixedFont")
         self.__stdin = Input(self, bg=bg, fg=fg, font_name="TkFixedFont")
 
+        self.__inputting = False
         self.prev_input = ""
 
         self.add_key_release_listener(self.key_release_listener)
@@ -33,6 +34,20 @@ class Console(Window):
     def key_release_listener(self, event):
         if event.keysym == "Return":
             self.__return_event()
+        if self.__stdin.get_display() != "":
+            if not self.__inputting:
+                self.input_begin_event()
+                self.__inputting = True
+        else:
+            if self.__inputting:
+                self.input_end_event()
+                self.__inputting = False
+
+    def input_begin_event(self):
+        pass
+
+    def input_end_event(self):
+        pass
 
     def __return_event(self):
         stdin = self.__stdin.get_display()
