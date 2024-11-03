@@ -51,7 +51,10 @@ class Main(ConsoleGUI):
             "MAIN_MENU_SELECTOR": 0,
             "DISPLAY_INFO": False,
             "TIME_REMAINING": 0,
-            "COLLECTED_GOLD": 0
+            "COLLECTED_GOLD": 0,
+            "DISPLAY_FPS": False,
+            "TEXT_COLOUR": "22BB00",
+            "BACKGROUND_COLOUR": "000000"
         }
         self.level = None
         self.entity_list = []
@@ -59,6 +62,13 @@ class Main(ConsoleGUI):
         self.text_box_list = []
         self.progress_bar_list = []
         self.focus_id = 0
+
+    def update_settings(self, key, value):
+        if key == "TEXT_COLOUR":
+            self.set_text_colour(value)
+        if key == "BACKGROUND_COLOUR":
+            self.set_background_colour(value)
+        self.settings[key] = value
 
     def on_begin(self):
         self.physics.start()
@@ -120,6 +130,10 @@ class Main(ConsoleGUI):
                     menu_id, item = data
                     menu = get_by_id(menu_id, self.menu_list)
                     menu.add_item(*item)
+                elif message == Message.MENU_REMOVE_ITEM:
+                    menu_id, index = data
+                    menu = get_by_id(menu_id, self.menu_list)
+                    menu.remove_item(index)
                 elif message == Message.MENU_CHANGE_INDEX:
                     menu_id, index = data
                     menu = get_by_id(menu_id, self.menu_list)
@@ -128,17 +142,25 @@ class Main(ConsoleGUI):
                     menu_id, visible = data
                     menu = get_by_id(menu_id, self.menu_list)
                     menu.set_visible(visible)
+                elif message == Message.MENU_SET_FORMATTING:
+                    menu_id, format_index, formatting = data
+                    menu = get_by_id(menu_id, self.menu_list)
+                    menu.set_formatting(format_index, formatting)
                 elif message == Message.TEXT_BOX_CREATED:
                     self.text_box_list.append(data)
                 elif message == Message.TEXT_BOX_VISIBLE:
                     text_box_id, visible = data
                     text_box = get_by_id(text_box_id, self.text_box_list)
                     text_box.set_visible(visible)
+                elif message == Message.TEXT_BOX_DELETED:
+                    for text_box in self.text_box_list:
+                        if text_box.get_id() == data:
+                            self.text_box_list.remove(text_box)
                 elif message == Message.GAME_STATE_CHANGED:
                     self.game_state = data
                 elif message == Message.UPDATE_SETTING:
                     key, value = data
-                    self.settings[key] = value
+                    self.update_settings(key, value)
                 elif message == Message.PROGRESS_BAR_CREATED:
                     self.progress_bar_list.append(data)
                 elif message == Message.PROGRESS_BAR_UPDATE:
@@ -190,9 +212,14 @@ class Main(ConsoleGUI):
             if text_box.get_visible():
                 self.draw_text_box(text_box)
 
+        y = 0
+        width_chars = self.get_width_chars() - 1
+        if self.settings["DISPLAY_FPS"]:
+            self.draw_text((width_chars, y), f"FPS: {round(fps)}",
+                           align_x=ALIGN_RIGHT, align_y=ALIGN_TOP, justify=ALIGN_RIGHT)
+
         if self.settings["DISPLAY_INFO"]:
-            width_chars = self.get_width_chars() - 1
-            y = 0
+            y += 1
             self.draw_text((width_chars, y), f"Time remaining: {self.settings["TIME_REMAINING"]}",
                            align_x=ALIGN_RIGHT, align_y=ALIGN_TOP, justify=ALIGN_RIGHT)
             y += 1

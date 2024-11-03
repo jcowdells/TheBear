@@ -1,0 +1,22 @@
+{
+  "MENU_TITLE": "OPTIONS",
+  "DEFAULT_DESCRIPTION": "",
+  "MENU_ITEMS": [
+    {
+      "title": "GO BACK",
+      "description": "Return to the main menu. Press ENTER."
+    },
+    {
+      "title": "DISPLAY FPS",
+      "description": "Display the current screen refresh rate in frames per second, in the format 'True'/'False'. Current value: '{}'."
+    },
+    {
+      "title": "TEXT COLOUR",
+      "description": "Set the colour of the displayed text, in the format 'RRGGBB' Current value: '{}'."
+    },
+    {
+      "title": "BACKGROUND COLOUR",
+      "description": "Set the colour of the background, in the format 'RRGGBB' Current value: '{}'."
+    }
+  ]
+}

@@ -14,10 +14,13 @@ class Message(Enum):
     ENTITY_KILL          = auto()
     MENU_CREATED         = auto()
     MENU_ADD_ITEM        = auto()
+    MENU_REMOVE_ITEM     = auto()
     MENU_CHANGE_INDEX    = auto()
     MENU_VISIBLE         = auto()
+    MENU_SET_FORMATTING  = auto()
     TEXT_BOX_CREATED     = auto()
     TEXT_BOX_VISIBLE     = auto()
+    TEXT_BOX_DELETED     = auto()
     GAME_STATE_CHANGED   = auto()
     LEVEL_CHANGED        = auto()
     FOCUS_ID             = auto()
@@ -50,3 +53,12 @@ def find_string_size(string):
         if len_line > max_width:
             max_width = len_line
     return max_width, max_height
+
+def is_valid_colour(colour):
+    if len(colour) != 6:
+        return False
+    chars = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F"]
+    for char in colour:
+        if char not in chars:
+            return False
+    return True

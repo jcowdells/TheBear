@@ -4,7 +4,7 @@
   "MENU_ITEMS": [
     {
       "title": "GO BACK",
-      "description": "Exit the help menu."
+      "description": "Exit the help menu. Press ENTER."
     },
     {
       "title": "HELP",
@@ -21,6 +21,14 @@
     {
       "title": "POUR",
       "description": "Pour the currently held object. Only works on items such as honey jars."
+    },
+    {
+      "title": "STEAL",
+      "description": "Steal gold from the bear. Only works while in close proximity, and while the bear is distracted."
+    },
+    {
+      "title": "QUIT",
+      "description": "Quit the game and return to the main menu."
     }
   ]
 }

@@ -1,5 +1,6 @@
 import json
 import math
+import os
 
 import util
 from src.render import Sampler, sampler_array
@@ -35,6 +36,12 @@ MENU_ITEMS = "MENU_ITEMS"
 
 TITLE = "title"
 DESCRIPTION = "description"
+
+SAVE_ID = "SAVE_ID"
+SAVE_NAME = "SAVE_NAME"
+LEVEL_INDEX = "LEVEL_INDEX"
+COLLECTED_GOLD = "COLLECTED_GOLD"
+CONDITION = "CONDITION"
 
 class EmptyAnimation:
     def tick(self):
@@ -250,6 +257,10 @@ class Player(Entity):
         vector = vector_from_angle(self._rotation + math.pi, self._hitbox_radius + entity.get_hitbox_radius())
         entity.set_position(point_add(self._position, vector))
 
+    def get_head_position(self):
+        vector = vector_from_angle(self._rotation + math.pi, self._hitbox_radius)
+        return point_add(self._position, vector)
+
     def move_within_level(self, distance, level):
         force = vector_from_angle(self._rotation, distance)
         new_position = point_add(self._position, force)
@@ -359,8 +370,9 @@ class Path:
         return self.string(0)
 
 class Level:
-    def __init__(self, filepath):
-        filepath = util.abspath(filepath)
+    def __init__(self, filepath, trust_path=False):
+        if not trust_path:
+            filepath = util.abspath(filepath)
         with open(filepath, "r") as file:
             raw_json = json.load(file)
 
@@ -559,6 +571,13 @@ class Level:
     def get_spawnpoint(self):
         return self.__spawnpoint
 
+def level_array(directory):
+    directory = util.abspath(directory)
+    levels = []
+    for file in sorted(os.listdir(directory)):
+        levels.append(Level(os.path.join(directory, file), trust_path=True))
+    return levels
+
 class TextBox:
     _id_counter = 0
 
@@ -626,6 +645,7 @@ class Menu:
         self.__default_description = default_description
         self.__items = []
         self._visible = visible
+        self._formatting = {}
 
     def get_title(self):
         return self._title
@@ -633,9 +653,8 @@ class Menu:
     def add_item(self, item_name, item_description=None):
         self.__items.append((item_name, item_description))
 
-    def remove_item(self, item_name):
-        index = self.get_item_index_by_name(item_name)
-        self.__items.pop(index)
+    def remove_item(self, item_index):
+        self.__items.pop(item_index)
 
     def get_item_name(self, index):
         return self.__items[index][0]
@@ -645,7 +664,10 @@ class Menu:
         if description is None:
             return self.__default_description
         else:
-            return description
+            if index in self._formatting.keys():
+                return description.format(*self._formatting[index])
+            else:
+                return description
 
     def get_num_items(self):
         return len(self.__items)
@@ -670,6 +692,9 @@ class Menu:
 
     def set_active_index(self, index):
         self._active_index = index
+
+    def set_formatting(self, index, formatting):
+        self._formatting[index] = formatting
 
 class MenuInterface:
     def __init__(self, num_items, active_index, menu_id):
@@ -714,3 +739,99 @@ class ProgressBar:
 
     def set_visible(self, visible):
         self._visible = visible
+
+class Save:
+    _id_counter = 0
+
+    PLAYING = "playing"
+    LOST = "lost"
+    WON = "won"
+
+    @classmethod
+    def from_file(cls, filepath, trust_path=False):
+        if not trust_path:
+            filepath = util.abspath(filepath)
+        with open(filepath, "r") as file:
+            raw_json = json.load(file)
+
+        save_id = raw_json[SAVE_ID]
+        save_name = raw_json[SAVE_NAME]
+        level_index = raw_json[LEVEL_INDEX]
+        collected_gold = raw_json[COLLECTED_GOLD]
+        condition = raw_json[CONDITION]
+        return cls(save_name, level_index, collected_gold, condition, save_id)
+
+    def __init__(self, save_name, level_index, collected_gold, condition=PLAYING, save_id=None):
+        if save_id is None:
+            self._id = Save._id_counter
+            Save._id_counter += 1
+        else:
+            self._id = save_id
+            if save_id >= Save._id_counter:
+                Save._id_counter = save_id + 1
+        self._save_name = save_name
+        self._level_index = level_index
+        self._collected_gold = collected_gold
+        self._condition = condition
+
+    def get_id(self):
+        return self._id
+
+    def get_save_name(self):
+        return self._save_name
+
+    def get_level_index(self):
+        return self._level_index
+
+    def set_level_index(self, level_index):
+        self._level_index = level_index
+
+    def get_collected_gold(self):
+        return self._collected_gold
+
+    def set_collected_gold(self, collected_gold):
+        self._collected_gold = collected_gold
+
+    def get_condition(self):
+        return self._condition
+
+    def set_condition(self, condition):
+        self._condition = condition
+
+    def save(self, directory, trust_path=False):
+        if not trust_path:
+            directory = util.abspath(directory)
+
+        raw_json = {
+            SAVE_ID: self._id,
+            SAVE_NAME: self._save_name,
+            LEVEL_INDEX: self._level_index,
+            COLLECTED_GOLD: self._collected_gold,
+            CONDITION: self._condition
+        }
+
+        filepath = os.path.join(directory, f"save_{self._id}.json")
+
+        with open(filepath, "w", encoding="utf-8") as file:
+            json.dump(raw_json, file, ensure_ascii=False)
+
+    def delete(self, directory, trust_path=False):
+        if not trust_path:
+            directory = util.abspath(directory)
+
+        filepath = os.path.join(directory, f"save_{self._id}.json")
+
+        if os.path.exists(filepath):
+            os.remove(filepath)
+
+def saves_array(directory):
+    directory = util.abspath(directory)
+    saves = []
+    for file in sorted(os.listdir(directory)):
+        saves.append(Save.from_file(os.path.join(directory, file), trust_path=True))
+    return saves
+
+def save_all(saves, directory):
+    directory = util.abspath(directory)
+    for save in saves:
+        save.save(directory, trust_path=True)

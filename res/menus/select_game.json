@@ -1,0 +1,14 @@
+{
+  "MENU_TITLE": "SELECT GAME",
+  "DEFAULT_DESCRIPTION": "Press ENTER to load this save file. Type 'delete' and press ENTER to delete this save file.",
+  "MENU_ITEMS": [
+    {
+      "title": "GO BACK",
+      "description": "Return to the main menu. Press ENTER."
+    },
+    {
+      "title": "NEW GAME",
+      "description": "Start a new game. Type the name you would like to give to the save file and press ENTER."
+    }
+  ]
+}

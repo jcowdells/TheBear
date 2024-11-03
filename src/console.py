@@ -79,5 +79,13 @@ class Console(Window):
     def get_height(self):
         return self.__stdout.winfo_height()
 
+    def set_text_colour(self, colour):
+        self.__stdout.configure(foreground=f"#{colour}")
+        self.__stdin.configure(foreground=f"#{colour}")
+
+    def set_background_colour(self, colour):
+        self.__stdout.configure(background=f"#{colour}")
+        self.__stdin.configure(background=f"#{colour}")
+
     def main(self):
         pass
