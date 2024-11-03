@@ -26,6 +26,7 @@ class Console(Window):
 
         self.add_key_release_listener(self.key_release_listener)
 
+        self.__stdin.focus()
         self.__stdin.pack(side=tk.BOTTOM, fill=tk.X)
         self.__stdout.pack(fill=tk.BOTH, expand=tk.TRUE)
 

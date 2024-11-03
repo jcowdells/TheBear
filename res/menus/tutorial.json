@@ -1,0 +1,34 @@
+{
+  "MENU_TITLE": "TUTORIAL",
+  "DEFAULT_DESCRIPTION": "",
+  "MENU_ITEMS": [
+    {
+      "title": "CONTINUE",
+      "description": "Start the game"
+    },
+    {
+      "title": "THE BEAR",
+      "description": "The Bear, once held in captivity in California national zoo, somehow escaped. It now spends its time searching for its two favourite things: gold and honey. Local residents of Fremont county have complained that their gold jewelery has gone missing due to The Bear. California state has tasked you with retrieving this stolen gold."
+    },
+    {
+      "title": "WHO AM I",
+      "description": "You recently returned from combat as a Navy Seal, and came to Fremont county to live out the American dream. However, your dreams were spoiled by The Bear, who keeps you awake at night by rummaging through drawers for gold. However, California state thinks that your experience will help you to tackle the issue of The Bear"
+    },
+    {
+      "title": "THE TASK",
+      "description": "Your task is to retrieve the gold that The Bear has stolen. California state has granted you access to the property that The Bear has been using as a base of operations. You will work through the property one floor at a time."
+    },
+    {
+      "title": "THE METHOD",
+      "description": "The Bear has one weakness - honey. In each level, you will have 30 seconds before The Bear enters. In this time, you should collect as much honey as you can from around the room, and pour it onto the floor. While The Bear is distracted by the honey, you will be able to steal the gold from its pockets."
+    },
+    {
+      "title": "WARNINGS",
+      "description": "Once The Bear has eaten all of the spilled honey, he will no longer be distracted, and will realise you have stolen the gold. It is recommended that you leave the level before The Bear has eaten all of the honey."
+    },
+    {
+      "title": "OTHER INFORMATION",
+      "description": "Once in the game, you can type 'help' into the console to get a list of possible commands. Typing in the console will pause the game automatically."
+    }
+  ]
+}

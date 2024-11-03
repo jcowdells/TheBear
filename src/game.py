@@ -7,21 +7,34 @@ from src.geometry import X, Y, A, B, line_gradient, line_perpendicular, line_int
     line_square_length, \
     HALF_PI, vector_from_points, vector_perpendicular, vector_normalise, line_collision, vector_add, vector_from_angle, \
     point_add, point_collision, vector_project, vector_subtract, lerp_v, lerp_p, vector_angle, vector_multiply, \
-    is_path_obstructed, line_angle
+    is_path_obstructed, line_angle, line_length
 
 BOUNDS   = "BOUNDS"
 TEXTURES = "TEXTURES"
+ENTITIES = "ENTITIES"
 OPTIONS  = "OPTIONS"
 
 TEXTURE = "texture"
 INDICES = "indices"
 
+TYPE     = "type"
+POSITION = "position"
+
 OUTLINE = "outline"
+EXIT    = "exit"
+SPAWNPOINT = "spawnpoint"
 
 ANIMATION = "animation"
 
 DURATION = "duration"
 SAMPLER_INDEX = "sampler_index"
+
+MENU_TITLE = "MENU_TITLE"
+DEFAULT_DESCRIPTION = "DEFAULT_DESCRIPTION"
+MENU_ITEMS = "MENU_ITEMS"
+
+TITLE = "title"
+DESCRIPTION = "description"
 
 class EmptyAnimation:
     def tick(self):
@@ -67,12 +80,25 @@ class Animation(EmptyAnimation):
         return self._animation[keys[-1]]
 
 class Entity:
+    @staticmethod
+    def from_string(entity_type, *args):
+        if entity_type == "Entity":
+            return Entity(*args)
+        elif entity_type == "Player":
+            return Player(*args)
+        elif entity_type == "Bear":
+            return Bear(*args)
+        elif entity_type == "HoneyJar":
+            return HoneyJar(*args)
+
     MOVEMENT_SPEED = 0.15
 
     _id_counter = 0
     SAMPLERS = None
     DISPLAY_TYPE = None
     ANIMATION_PATH = None
+
+    GRABBABLE = False
 
     def __init__(self, position, rotation, hitbox_radius):
         self._id = Entity._id_counter
@@ -116,6 +142,13 @@ class Entity:
         delta_y = distance * math.sin(self._rotation + HALF_PI)
         self._position = (self._position[X] + delta_x, self._position[Y] + delta_y)
 
+    def at_exit(self, level):
+        return level.is_touching_exit(self._position, self._square_radius * 1.5)
+
+    def is_touching(self, entity):
+        distance = line_length(self._position, entity.get_position())
+        return distance < self._hitbox_radius + entity.get_hitbox_radius()
+
     def get_hitbox_radius(self):
         return self._hitbox_radius
 
@@ -130,10 +163,11 @@ class Entity:
         return self._animation
 
 class DisplayEntity:
-    SPRITE  = 0
-    TEXTURE = 1
+    SPRITE        = 0
+    TEXTURE       = 1
+    TAGGED_SPRITE = 2
 
-    def __init__(self, position, rotation, size, samplers, entity_id, display_type, visible):
+    def __init__(self, position, rotation, size, samplers, entity_id, display_type, visible, display_name):
         self._prev_position = position
         self._curr_position = position
         self._next_position = position
@@ -148,6 +182,7 @@ class DisplayEntity:
         self._id = entity_id
         self._display_type = display_type
         self._visible = visible
+        self._display_name = display_name
 
     def get_position(self, alpha):
         return lerp_p(self._prev_position, self._curr_position, alpha)
@@ -176,6 +211,9 @@ class DisplayEntity:
     def get_display_type(self):
         return self._display_type
 
+    def get_display_name(self):
+        return self._display_name
+
     def get_visible(self):
         return self._visible
 
@@ -193,6 +231,8 @@ class Player(Entity):
     ROTATION_SPEED = 0.025
     MOVEMENT_SPEED = 0.15
 
+    REACH = 4.0
+
     DISPLAY_TYPE = DisplayEntity.SPRITE
     SAMPLERS = sampler_array("res/textures/player")
     ANIMATION_PATH = "res/animations/player.json"
@@ -205,6 +245,10 @@ class Player(Entity):
 
     def get_distance(self):
         return math.sqrt(self._position[X]**2 + self._position[Y]**2)
+
+    def hold_entity(self, entity):
+        vector = vector_from_angle(self._rotation + math.pi, self._hitbox_radius + entity.get_hitbox_radius())
+        entity.set_position(point_add(self._position, vector))
 
     def move_within_level(self, distance, level):
         force = vector_from_angle(self._rotation, distance)
@@ -246,6 +290,30 @@ class Bear(Entity):
 
     def __init__(self, position, rotation):
         super().__init__(position, rotation, 1)
+
+class HoneyJar(Entity):
+    DISPLAY_TYPE = DisplayEntity.TAGGED_SPRITE
+
+    SAMPLERS = [Sampler("res/textures/player/player0.tex")]
+
+    GRABBABLE = True
+
+    def __init__(self, position, rotation):
+        super().__init__(position, rotation, 0.5)
+
+    def __str__(self):
+        return "Honey Jar"
+
+class HoneySpill(Entity):
+    DISPLAY_TYPE = DisplayEntity.TAGGED_SPRITE
+
+    SAMPLERS = [Sampler("res/textures/mainmenu.tex")]
+
+    def __init__(self, position, rotation):
+        super().__init__(position, rotation, 0.5)
+
+    def __str__(self):
+        return "Honey Spill"
 
 class Path:
     def __init__(self, point):
@@ -297,10 +365,15 @@ class Level:
             raw_json = json.load(file)
 
         bounds = raw_json[BOUNDS]
-        textures = raw_json[TEXTURES]
+        textures = []
+        if TEXTURES in raw_json.keys():
+            textures = raw_json[TEXTURES]
         options = {}
         if OPTIONS in raw_json.keys():
             options = raw_json[OPTIONS]
+        entities = []
+        if ENTITIES in raw_json.keys():
+            entities = raw_json[ENTITIES]
 
         self.__bounds = []
         self.__pathfind_point_indices = []
@@ -311,7 +384,10 @@ class Level:
         used_samplers = {}
         self.__samplers = []
         self.__textures = []
+        self.__entities = []
         self.__outline  = "#"
+        self.__spawnpoint = (0, 0)
+        self.__exit_index = None
 
         try:
             for x, y in bounds:
@@ -373,9 +449,18 @@ class Level:
         except FileNotFoundError:
             raise SyntaxError(f"Unknown texture file '{texture_file}'!")
 
+        for entity in entities:
+            entity_type = entity[TYPE]
+            position = entity[POSITION][0], entity[POSITION][1]
+            self.__entities.append((entity_type, position))
+
         for option, value in options.items():
             if option == OUTLINE:
                 self.__outline = value[0]
+            elif option == EXIT:
+                self.__exit_index = value
+            elif option == SPAWNPOINT:
+                self.__spawnpoint = value[0], value[1]
 
     def get_bounds(self):
         return self.__bounds
@@ -442,6 +527,14 @@ class Level:
             i_a = bound_index - 1
         return i_a, i_b
 
+    def is_touching_exit(self, point, hitbox_radius):
+        line = list(self.iter_lines())[self.get_exit_index()]
+        return line_collision(*line, point, hitbox_radius)
+
+    def iter_entities(self):
+        for entity in self.__entities:
+            yield entity
+
     def get_bound(self, bound_index):
         return self.__bounds[bound_index]
 
@@ -459,6 +552,12 @@ class Level:
 
     def get_outline(self):
         return self.__outline
+
+    def get_exit_index(self):
+        return self.__exit_index
+
+    def get_spawnpoint(self):
+        return self.__spawnpoint
 
 class TextBox:
     _id_counter = 0
@@ -490,8 +589,34 @@ class TextBox:
     def get_visible(self):
         return self._visible
 
+    def set_visible(self, visible):
+        self._visible = visible
+
 class Menu:
     _id_counter = 0
+
+    @classmethod
+    def from_file(cls, filepath, visible=True):
+        filepath = util.abspath(filepath)
+        with open(filepath, "r") as file:
+            raw_json = json.load(file)
+
+        menu_title = raw_json[MENU_TITLE]
+        if DEFAULT_DESCRIPTION in raw_json.keys():
+            default_description = raw_json[DEFAULT_DESCRIPTION]
+        else:
+            default_description = ""
+
+        menu_items = raw_json[MENU_ITEMS]
+        menu = cls(menu_title, default_description, visible)
+        for item in menu_items:
+            title = item[TITLE]
+            if DESCRIPTION in item.keys():
+                description = item[DESCRIPTION]
+            else:
+                description = None
+            menu.add_item(title, description)
+        return menu
 
     def __init__(self, title, default_description="", visible=True):
         self._title = title
@@ -554,3 +679,38 @@ class MenuInterface:
 
     def get_id(self):
         return self._menu_id
+
+class ProgressBar:
+    _id_counter = 0
+
+    def __init__(self, position, width, visible=True):
+        self._position = position
+        self._width = width
+        self._id = ProgressBar._id_counter
+        ProgressBar._id_counter += 1
+        self._progress = 0
+        self._visible = visible
+
+    def get_progress(self):
+        return self._progress
+
+    def set_progress(self, progress):
+        self._progress = progress
+
+    def get_position(self):
+        return self._position
+
+    def set_position(self, position):
+        self._position = position
+
+    def get_width(self):
+        return self._width
+
+    def get_id(self):
+        return self._id
+
+    def get_visible(self):
+        return self._visible
+
+    def set_visible(self, visible):
+        self._visible = visible

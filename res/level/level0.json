@@ -17,7 +17,15 @@
   "TEXTURES": [
 
   ],
+  "ENTITIES": [
+    {
+      "type": "HoneyJar",
+      "position": [0, 0]
+    }
+  ],
   "OPTIONS": {
-    "outline": "."
+    "outline": ".",
+    "exit": 0,
+    "spawnpoint": [0, 0]
   }
 }

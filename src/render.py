@@ -50,7 +50,6 @@ def sampler_array(directory):
     directory = util.abspath(directory)
     samplers = []
     for file in sorted(os.listdir(directory)):
-        print(file)
         samplers.append(Sampler(os.path.join(directory, file), trust_path=True))
     return samplers
 

@@ -1,0 +1,26 @@
+{
+  "MENU_TITLE": "HELP",
+  "DEFAULT_DESCRIPTION": "",
+  "MENU_ITEMS": [
+    {
+      "title": "GO BACK",
+      "description": "Exit the help menu."
+    },
+    {
+      "title": "HELP",
+      "description": "Prints this help message."
+    },
+    {
+      "title": "GRAB",
+      "description": "Grab an object within your reach."
+    },
+    {
+      "title": "DROP",
+      "description": "Drop the currently held object."
+    },
+    {
+      "title": "POUR",
+      "description": "Pour the currently held object. Only works on items such as honey jars."
+    }
+  ]
+}

@@ -141,6 +141,9 @@ def point_add(a, b):
 def point_subtract(a, b):
     return a[X] - b[X], a[Y] - b[Y]
 
+def point_multiply(p, m):
+    return p[X] * m, p[Y] * m
+
 def point_transform(point, centre, rotation, max_view, screen_width_px, screen_height_px, screen_width_ch, screen_height_ch):
     point = point_centre(point, centre)
     point = point_rotate(point, rotation)
