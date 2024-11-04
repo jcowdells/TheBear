@@ -2,12 +2,13 @@ import json
 import time
 from os import close
 import random
+from venv import create
 
-from src import util
-from src.game import DisplayEntity, Player, Level, Bear, Menu, MenuInterface, TextBox, Entity, HoneyJar, HoneySpill, \
+import util
+from game import DisplayEntity, Player, Level, Bear, Menu, MenuInterface, TextBox, Entity, HoneyJar, HoneySpill, \
     ProgressBar, level_array, saves_array, Save
-from src.geometry import line_length
-from src.util import Message
+from geometry import line_length
+from util import Message
 from enum import Enum, auto
 
 UP = "Up"
@@ -448,6 +449,7 @@ def physics_thread(input_pipe, output_pipe):
                         if command != "":
                             current_save = create_save(saves_list, command)
                             add_save_to_menu(current_save, games_menu_id, menu_list, output_pipe)
+
                             current_save.save("saves")
                             save_warning_time = 3
                             game_state = game_state_tutorial_select(games_menu_id, tutorial_question_id, save_warning_id, output_pipe)
@@ -463,8 +465,6 @@ def physics_thread(input_pipe, output_pipe):
                             remove_item_from_menu(games_menu_id, menu_list, games_menu.active_index, output_pipe)
                         else:
                             current_save = saves_list[games_menu.active_index - 2]
-                            player_gold = current_save.get_collected_gold()
-                            level_index = current_save.get_level_index()
                             if current_save.get_condition() != Save.PLAYING:
                                 result_text_box = create_result_text_box(text_box_list, current_save, output_pipe)
                                 game_state = game_state_result(text_box_list, progress_bar_list, menu_list, result_text_box, output_pipe)
@@ -477,7 +477,7 @@ def physics_thread(input_pipe, output_pipe):
                 if is_command_yes(command):
                     game_state = game_state_tutorial_view(tutorial_question_id, tutorial_menu_id, output_pipe)
                 else:
-                    game_state = game_state_game(tutorial_question_id, tutorial_menu_id, switch_level_warning, games_menu_id, entity_list, output_pipe)
+                    game_state = GameState.SWITCH_LEVEL_FINALISE
                 command = None
 
         if game_state == GameState.TUTORIAL_VIEW:
@@ -487,7 +487,7 @@ def physics_thread(input_pipe, output_pipe):
                     input_time = curr_time
                 if command is not None:
                     if tutorial_menu.active_index == 0:
-                        game_state = game_state_game(tutorial_question_id, tutorial_menu_id, switch_level_warning, games_menu_id, entity_list, output_pipe)
+                        game_state = GameState.SWITCH_LEVEL_FINALISE
 
         if game_state == GameState.OPTIONS_SELECT:
             options_invalid_time += delta
@@ -534,6 +534,17 @@ def physics_thread(input_pipe, output_pipe):
                             set_menu_formatting(options_menu_id, options_menu.active_index, (command,), output_pipe)
                         else:
                             options_invalid_time = 0
+                    if options_menu.active_index == 4:
+                        try:
+                            font_size = int(command)
+                        except ValueError:
+                            font_size = None
+                        if font_size is not None:
+                            options["FONT_SIZE"] = font_size
+                            send_message(output_pipe, Message.UPDATE_SETTING, ("FONT_SIZE", font_size))
+                            set_menu_formatting(options_menu_id, options_menu.active_index, (font_size,), output_pipe)
+                        else:
+                            options_invalid_time = 0
                     save_options(options)
                     command = None
 
@@ -542,7 +553,8 @@ def physics_thread(input_pipe, output_pipe):
                 if is_command_yes(command):
                     level_index += 1
 
-                    if level_index == num_levels:
+                    if level_index >= num_levels:
+                        level_index = num_levels - 1
                         current_save.set_collected_gold(player_gold)
                         current_save.set_condition(Save.WON)
                         current_save.save("saves")
@@ -558,6 +570,14 @@ def physics_thread(input_pipe, output_pipe):
                 command = None
 
         if game_state == GameState.SWITCH_LEVEL_FINALISE:
+            if level_index >= num_levels:
+                result_text_box = create_result_text_box(text_box_list, current_save, output_pipe)
+                game_state = game_state_result(text_box_list, progress_bar_list, menu_list, result_text_box, output_pipe)
+
+            games_menu = get_by_id(games_menu_id, menu_list)
+            player_gold = current_save.get_collected_gold()
+            level_index = current_save.get_level_index()
+
             kill_level_entities(entity_list, level_entity_list, output_pipe)
             level = levels[level_index]
             spawn_level_entities(level, entity_list, level_entity_list, output_pipe)
@@ -570,6 +590,7 @@ def physics_thread(input_pipe, output_pipe):
             player_steal = False
             player.set_position(level.get_spawnpoint())
             player.set_rotation(0)
+            send_message(output_pipe, Message.LEVEL_CHANGED, level)
             game_state = game_state_game(tutorial_question_id, tutorial_menu_id, switch_level_warning, games_menu_id, entity_list, output_pipe)
 
         if game_state == GameState.RESULT:
@@ -621,6 +642,8 @@ def physics_thread(input_pipe, output_pipe):
                         player_steal = True
                     elif command == "QUIT":
                         game_state = game_state_main_menu(text_box_list, progress_bar_list, menu_list, current_save, output_pipe)
+                    elif command == "EASTEREGG":
+                        send_message(output_pipe, Message.UPDATE_SETTING, ("EASTER_EGG", True))
                     command = None
 
         if game_state == GameState.GAME and not paused:
@@ -630,17 +653,17 @@ def physics_thread(input_pipe, output_pipe):
             show_information(output_pipe)
             update_information(max(0, round(30 - level_duration)), player_gold, output_pipe)
 
-            if level_duration <= 3:
+            if level_duration <= 2:
                 show_text_box(bear_30s_warning, output_pipe)
             else:
                 hide_text_box(bear_30s_warning, output_pipe)
 
-            if 30 <= level_duration <= 33:
+            if 30 <= level_duration <= 32:
                 show_text_box(bear_0s_warning, output_pipe)
             else:
                 hide_text_box(bear_0s_warning, output_pipe)
 
-            if player_steal_info_time <= 3:
+            if player_steal_info_time <= 1:
                 show_text_box(player_steal_info, output_pipe)
             else:
                 hide_text_box(player_steal_info, output_pipe)
@@ -667,6 +690,7 @@ def physics_thread(input_pipe, output_pipe):
 
             if player.at_exit(level):
                 player.set_position(player_prev_position)
+                hide_all_progress_bars(progress_bar_list, output_pipe)
                 game_state = game_state_switch_level(switch_level_warning, output_pipe)
 
             if held_entity is not None:
@@ -709,7 +733,7 @@ def physics_thread(input_pipe, output_pipe):
                         bear_target = player
 
                 if not bear.is_touching(bear_target):
-                    bear.move_towards(bear_target.get_position(), level)
+                    bear.move_towards_target(bear_target.get_position(), level)
                     bear.get_animation().tick()
                 else:
                     bear.get_animation().reset()

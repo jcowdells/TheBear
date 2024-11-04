@@ -17,6 +17,10 @@
     {
       "title": "BACKGROUND COLOUR",
       "description": "Set the colour of the background, in the format 'RRGGBB' Current value: '{}'."
+    },
+    {
+      "title": "FONT SIZE",
+      "description": "Set the font size of the text. Current value: '{}'"
     }
   ]
 }

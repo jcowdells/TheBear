@@ -1,7 +1,7 @@
 import os
 
-from src.console import Console
-from src.geometry import *
+from console import Console
+from geometry import *
 import util
 
 ALIGN_LEFT   = 0
@@ -29,6 +29,8 @@ class Sampler:
                 else:
                     self.__data[index] = int.from_bytes(byte, 'little')
                 index += 1
+        while len(self.__data) < self.__width * self.__height:
+            self.__data.append(ord(" "))
 
     def get_pixel(self, x, y):
         if x <= 0:
@@ -100,7 +102,7 @@ class Buffer:
 
 class ConsoleGUI(Console):
     def __init__(self, width, height, x, y):
-        super().__init__(width, height, x, y, 10, fg="#22BB00")
+        super().__init__(width, height, x, y, 5, fg="#22BB00")
         self.buffer = Buffer(self.get_width_chars(), self.get_height_chars())
 
     def configure_event(self, event):
@@ -121,6 +123,12 @@ class ConsoleGUI(Console):
 
     def draw_sampler(self, a, b, c, uv_a, uv_b, uv_c, sampler):
         min_x, min_y, max_x, max_y = triangle_bbox(a, b, c)
+        width_chars = self.get_width_chars()
+        height_chars = self.get_height_chars()
+        min_x = max(0, min_x)
+        min_y = max(0, min_y)
+        max_x = min(width_chars - 1, max_x)
+        max_y = min(height_chars - 1, max_y)
         for x in range(min_x, max_x + 1):
             for y in range(min_y, max_y + 1):
                 if triangle_contains(a, b, c, (x, y)):

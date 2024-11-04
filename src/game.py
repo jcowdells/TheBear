@@ -1,16 +1,19 @@
 import json
 import math
 import os
+from multiprocessing import Process, Event, Pipe
 
 import util
-from src.render import Sampler, sampler_array
-from src.geometry import X, Y, A, B, line_gradient, line_perpendicular, line_intersect, point_inside, \
+from util import Message
+from render import Sampler, sampler_array
+from geometry import X, Y, A, B, line_gradient, line_perpendicular, line_intersect, point_inside, \
     line_square_length, \
     HALF_PI, vector_from_points, vector_perpendicular, vector_normalise, line_collision, vector_add, vector_from_angle, \
     point_add, point_collision, vector_project, vector_subtract, lerp_v, lerp_p, vector_angle, vector_multiply, \
     is_path_obstructed, line_angle, line_length
 
 BOUNDS   = "BOUNDS"
+TEXTURE_BOUNDS = "TEXTURE_BOUNDS"
 TEXTURES = "TEXTURES"
 ENTITIES = "ENTITIES"
 OPTIONS  = "OPTIONS"
@@ -84,7 +87,14 @@ class Animation(EmptyAnimation):
         for key in keys:
             if key >= self._cur_ticks:
                 return self._animation[key]
-        return self._animation[keys[-1]]
+        return self._animation[keys[0]]
+
+def pathfind_thread(entity, target, radius, pipe, level, flag):
+    while flag.is_set():
+        while pipe.poll():
+            entity, target, radius = pipe.recv()
+        path = level.find_shortest_path(entity, target, radius)
+        pipe.send(path)
 
 class Entity:
     @staticmethod
@@ -114,6 +124,7 @@ class Entity:
         self._rotation = rotation
         self._hitbox_radius = hitbox_radius
         self._square_radius = hitbox_radius * hitbox_radius
+
         if self.ANIMATION_PATH is None:
             self._animation = EmptyAnimation()
         else:
@@ -137,12 +148,45 @@ class Entity:
     def look_at(self, position):
         self._rotation = line_angle(self._position, position)
 
-    def move_towards(self, target, level):
-        route = level.find_shortest_path(self._position, target, 1)
-        if route:
-            next_target = route[1].point
+    def move_towards_target(self, target, level):
+        path = level.find_shortest_path(self._position, target, self._hitbox_radius)
+        if path:
+            next_target = path[1]
             self.look_at(next_target)
-            self.move(-self.MOVEMENT_SPEED)
+        else:
+            self.look_at(target)
+        self.move_within_level(-self.MOVEMENT_SPEED, level)
+
+    def move_within_level(self, distance, level):
+        force = vector_from_angle(self._rotation, distance)
+        new_position = point_add(self._position, force)
+        collided_lines = []
+
+        count = 0
+        for a, b in level.iter_lines():
+            if line_collision(a, b, new_position, self._square_radius):
+                normal = level.get_normal(count)
+                projected_force = vector_project(force, normal)
+                force = vector_subtract(force, projected_force)
+                collided_lines.append(count)
+            count += 1
+
+        count = 0
+        for a in level.get_bounds():
+            if point_collision(a, new_position, self._square_radius):
+                i_a, i_b = level.get_connected_lines(count)
+                if i_a in collided_lines or i_b in collided_lines:
+                    continue
+                cur_dist = vector_from_points(a, new_position)
+                escape_force = vector_normalise(cur_dist) * self._square_radius
+                projected_force = vector_subtract(escape_force, cur_dist)
+                force = vector_add(force, projected_force)
+            count += 1
+
+        if len(collided_lines) >= 2:
+            force = (0, 0)
+
+        self._position = point_add(self._position, force)
 
     def move(self, distance):
         delta_x = distance * math.cos(self._rotation + HALF_PI)
@@ -261,37 +305,6 @@ class Player(Entity):
         vector = vector_from_angle(self._rotation + math.pi, self._hitbox_radius)
         return point_add(self._position, vector)
 
-    def move_within_level(self, distance, level):
-        force = vector_from_angle(self._rotation, distance)
-        new_position = point_add(self._position, force)
-        collided_lines = []
-
-        count = 0
-        for a, b in level.iter_lines():
-            if line_collision(a, b, new_position, self._square_radius):
-                normal = level.get_normal(count)
-                projected_force = vector_project(force, normal)
-                force = vector_subtract(force, projected_force)
-                collided_lines.append(count)
-            count += 1
-
-        count = 0
-        for a in level.get_bounds():
-            if point_collision(a, new_position, self._square_radius):
-                i_a, i_b = level.get_connected_lines(count)
-                if i_a in collided_lines or i_b in collided_lines:
-                    continue
-                cur_dist = vector_from_points(a, new_position)
-                escape_force = vector_normalise(cur_dist) * self._square_radius
-                projected_force = vector_subtract(escape_force, cur_dist)
-                force = vector_add(force, projected_force)
-            count += 1
-
-        if len(collided_lines) >= 2:
-            force = (0, 0)
-
-        self._position = point_add(self._position, force)
-
 class Bear(Entity):
     MOVEMENT_SPEED = 0.075
 
@@ -305,7 +318,7 @@ class Bear(Entity):
 class HoneyJar(Entity):
     DISPLAY_TYPE = DisplayEntity.TAGGED_SPRITE
 
-    SAMPLERS = [Sampler("res/textures/player/player0.tex")]
+    SAMPLERS = [Sampler("res/textures/honeyjar.tex")]
 
     GRABBABLE = True
 
@@ -318,7 +331,7 @@ class HoneyJar(Entity):
 class HoneySpill(Entity):
     DISPLAY_TYPE = DisplayEntity.TAGGED_SPRITE
 
-    SAMPLERS = [Sampler("res/textures/mainmenu.tex")]
+    SAMPLERS = [Sampler("res/textures/honeyspill.tex")]
 
     def __init__(self, position, rotation):
         super().__init__(position, rotation, 0.5)
@@ -377,6 +390,9 @@ class Level:
             raw_json = json.load(file)
 
         bounds = raw_json[BOUNDS]
+        texture_bounds = []
+        if TEXTURE_BOUNDS in raw_json.keys():
+            texture_bounds = raw_json[TEXTURE_BOUNDS]
         textures = []
         if TEXTURES in raw_json.keys():
             textures = raw_json[TEXTURES]
@@ -396,6 +412,7 @@ class Level:
         used_samplers = {}
         self.__samplers = []
         self.__textures = []
+        self.__texture_bounds = []
         self.__entities = []
         self.__outline  = "#"
         self.__spawnpoint = (0, 0)
@@ -404,6 +421,12 @@ class Level:
         try:
             for x, y in bounds:
                 self.__bounds.append((x, y))
+        except ValueError:
+            raise SyntaxError("Coordinate must contain only two values")
+
+        try:
+            for x, y in texture_bounds:
+                self.__texture_bounds.append((x, y))
         except ValueError:
             raise SyntaxError("Coordinate must contain only two values")
 
@@ -477,6 +500,9 @@ class Level:
     def get_bounds(self):
         return self.__bounds
 
+    def get_texture_bounds(self):
+        return self.__texture_bounds
+
     def iter_lines(self):
         for i in range(self.__num_bounds):
             a = self.__bounds[i]
@@ -498,30 +524,50 @@ class Level:
         for i in range(self.__num_pathfinders):
             yield self.get_pathfind_point(i, hitbox_radius)
 
-    def find_shortest_path(self, start, end, hitbox_radius):
-        path = Path(start)
-        self.find_paths(start, end, hitbox_radius, path)
-        return path.find_shortest_path(end)
+    def find_shortest_path(self, start, end, hitbox_radius, visited_indices=None, path=None, depth=0):
+        depth += 1
 
-    def find_paths(self, start, end, hitbox_radius, path, visited_indices=None):
-        if not self.is_path_obstructed(start, end, hitbox_radius):
-            return path.add_path(Path(end))
+        if depth >= 5:
+            return None
 
         if visited_indices is None:
             visited_indices = []
 
+        if path is None:
+            path = []
+
+        points = self.find_closest_points(start, end, hitbox_radius, visited_indices)
+        for index in points:
+            if index in visited_indices:
+                return None
+            if index == -1:
+                return [start, end]
+            else:
+                point = self.get_pathfind_point(index, hitbox_radius)
+                new_path = list(path)
+                new_indices = list(visited_indices)
+                new_indices.append(index)
+                final_path = self.find_shortest_path(point, end, hitbox_radius, new_indices, new_path, depth)
+                if final_path is not None and end in final_path:
+                    final_path.insert(0, point)
+                    return final_path
+
+        return None
+
+    def find_closest_points(self, start, end, hitbox_radius, visited_indices):
+        order = []
+        if not self.is_path_obstructed(start, end, hitbox_radius):
+            return [-1]
         for i in range(self.__num_pathfinders):
             if i in visited_indices:
                 continue
-            point = self.get_pathfind_point(i, hitbox_radius)
-            if not self.is_path_obstructed(start, point, hitbox_radius):
-                updated_indices = list(visited_indices)
-                updated_indices.append(i)
-                sub_path = Path(point)
-                sub_path = self.find_paths(point, end, hitbox_radius, sub_path, updated_indices)
-                path.add_path(sub_path)
+            target = self.get_pathfind_point(i, hitbox_radius)
+            if not self.is_path_obstructed(start, target, hitbox_radius):
+                distance = line_length(target, end)
+                order.append((i, distance))
 
-        return path
+        order.sort(key=lambda x: x[1])
+        return [p[0] for p in order]
 
     def is_path_obstructed(self, start, end, hitbox_radius):
         obstructed = False

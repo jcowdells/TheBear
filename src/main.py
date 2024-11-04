@@ -3,19 +3,17 @@ import time
 import textwrap
 from multiprocessing import Process, Pipe
 
-from lxml.html.builder import CENTER
-
-from src import util
-from src.render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, ALIGN_BOTTOM, Sampler, \
+import util
+from render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, ALIGN_BOTTOM, Sampler, \
     sampler_array
-from src.geometry import X, Y, point_rotate, point_transform, line_gradient, line_perpendicular, line_intersect, \
+from geometry import X, Y, point_rotate, point_transform, line_gradient, line_perpendicular, line_intersect, \
     point_inside, line_square_length, point_subtract, vector_from_angle, vector_project, vector_subtract, point_add, \
     line_collision, point_collision, point_normal, vector_from_points, vector_normalise, vector_add, is_path_obstructed, \
     HALF_PI, point_multiply
-from src.game import Level, Player, Menu, DisplayEntity, Path
+from game import Level, Player, Menu, DisplayEntity, Path
 import cProfile
-from src.physics import send_message, recv_message, physics_thread, get_by_id, TIMESTEP, GameState
-from src.util import Message
+from physics import send_message, recv_message, physics_thread, get_by_id, TIMESTEP, GameState
+from util import Message
 
 UP = "Up"
 DOWN = "Down"
@@ -46,6 +44,8 @@ class Main(ConsoleGUI):
         self.main_menu_icons = sampler_array("res/textures/mainmenu_icons")
         self.main_menu_num_icons = len(self.main_menu_icons)
 
+        self.easter_egg_sampler = Sampler("res/textures/me.tex")
+
         self.game_state = GameState.MAIN_MENU
         self.settings = {
             "MAIN_MENU_SELECTOR": 0,
@@ -54,7 +54,9 @@ class Main(ConsoleGUI):
             "COLLECTED_GOLD": 0,
             "DISPLAY_FPS": False,
             "TEXT_COLOUR": "22BB00",
-            "BACKGROUND_COLOUR": "000000"
+            "BACKGROUND_COLOUR": "000000",
+            "FONT_SIZE": 10,
+            "EASTER_EGG": False
         }
         self.level = None
         self.entity_list = []
@@ -68,6 +70,8 @@ class Main(ConsoleGUI):
             self.set_text_colour(value)
         if key == "BACKGROUND_COLOUR":
             self.set_background_colour(value)
+        if key == "FONT_SIZE":
+            self.set_font_size(value)
         self.settings[key] = value
 
     def on_begin(self):
@@ -87,7 +91,6 @@ class Main(ConsoleGUI):
 
         self.cur_time = time.perf_counter()
         fps = 1 / (self.cur_time - self.prev_time)
-        debug(f"FPS: {fps}")
         self.prev_time = self.cur_time
 
         while self.input_pipe.poll():
@@ -178,10 +181,6 @@ class Main(ConsoleGUI):
         curr_delta = self.cur_time - self.prev_delta_time
         alpha = curr_delta / self.delta
         alpha = max(0, min(1, alpha))
-        debug(f"acct delta {self.delta}")
-        debug(f"curr delta {curr_delta}")
-        debug(f"     alpha {alpha}")
-        debug(f"{self.get_width_chars()} {self.get_height_chars()}")
 
         focus_entity = get_by_id(self.focus_id, self.entity_list)
         if focus_entity is not None:
@@ -268,16 +267,24 @@ class Main(ConsoleGUI):
             point = self.transform_point(point, centre, rotation)
             centred_bounds.append(point)
 
+        centred_texture_bounds = []
+        for point in level.get_texture_bounds():
+            point = self.transform_point(point, centre, rotation)
+            centred_texture_bounds.append(point)
+
         outline = level.get_outline()
         len_bounds = len(centred_bounds)
 
         for i in range(level.get_num_textures()):
             sampler_index, c1, c2, c3, c4 = level.get_texture(i)
-            sampler = level.get_sampler(sampler_index)
-            a = centred_bounds[c1]
-            b = centred_bounds[c2]
-            c = centred_bounds[c3]
-            d = centred_bounds[c4]
+            if self.settings["EASTER_EGG"]:
+                sampler = self.easter_egg_sampler
+            else:
+                sampler = level.get_sampler(sampler_index)
+            a = centred_texture_bounds[c1]
+            b = centred_texture_bounds[c2]
+            c = centred_texture_bounds[c3]
+            d = centred_texture_bounds[c4]
             self.draw_sampler(a, b, c, (0, 0), (1, 0), (1, 1), sampler)
             self.draw_sampler(a, c, d, (0, 0), (1, 1), (0, 1), sampler)
 

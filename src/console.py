@@ -87,5 +87,8 @@ class Console(Window):
         self.__stdout.configure(background=f"#{colour}")
         self.__stdin.configure(background=f"#{colour}")
 
+    def set_font_size(self, font_size):
+        tk_fixed_font_size(font_size)
+
     def main(self):
         pass
