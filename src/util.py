@@ -1,6 +1,7 @@
 import os
 from enum import Enum, auto
 
+# Enum class that contains all possible messages that can be sent between physics and main
 class Message(Enum):
     EXIT                 = auto()
     TIMESTEP             = auto()
@@ -32,11 +33,14 @@ class Message(Enum):
     PROGRESS_BAR_VISIBLE = auto()
     PROGRESS_BAR_UPDATE  = auto()
 
+# Get the root directory of the project
 ROOT_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
+# Convert a local path to absolute, makes the game work on windows and on linux
 def abspath(local_path):
     return os.path.abspath(os.path.join(ROOT_DIRECTORY, local_path.lstrip(os.path.sep)))
 
+# Flatten a tuple
 def flatten(t):
     for x in t:
         if isinstance(x, tuple):
@@ -44,6 +48,7 @@ def flatten(t):
         else:
             yield x
 
+# Find the size of a string, gets the width of the longest line, and how many lines there are
 def find_string_size(string):
     lines = string.split("\n")
     max_height = len(lines)
@@ -54,6 +59,7 @@ def find_string_size(string):
             max_width = len_line
     return max_width, max_height
 
+# Checks if a string represents a valid 6 digit hex number
 def is_valid_colour(colour):
     if len(colour) != 6:
         return False

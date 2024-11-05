@@ -1,19 +1,25 @@
-
 from src.gui import *
+from tkinter import font
 
+# Change the TkFixedFont size
 def tk_fixed_font_size(font_size):
     tk_fixed_font = font.nametofont("TkFixedFont")
     tk_fixed_font.configure(size=font_size)
 
+# Get the width of a fixed font character
 def tk_get_fixed_font_width():
     tk_fixed_font = font.nametofont("TkFixedFont")
     return tk_fixed_font.measure("_")
 
+# Get the height of a fixed font character
 def tk_get_fixed_font_height():
     tk_fixed_font = font.nametofont("TkFixedFont")
     return tk_fixed_font.metrics("linespace")
 
+# A console window, uses the Window class, and adds the output and input areas
 class Console(Window):
+    # Create the console with a width, height, and x, y position
+    # The font size and colours can also be set.
     def __init__(self, width, height, x, y, font_size, bg="#000000", fg="#FFFFFF"):
         super().__init__(x, y, width, height, "Console window")
         tk_fixed_font_size(font_size)
@@ -24,15 +30,15 @@ class Console(Window):
         self.__inputting = False
         self.prev_input = ""
 
-        self.add_key_release_listener(self.key_release_listener)
+        self.add_key_release_listener(self.__key_release_listener)
 
         self.__stdin.focus()
         self.__stdin.pack(side=tk.BOTTOM, fill=tk.X)
         self.__stdout.pack(fill=tk.BOTH, expand=tk.TRUE)
 
-        self.__running = True
-
-    def key_release_listener(self, event):
+    # Called every time a key is released
+    def __key_release_listener(self, event):
+        # keysym is used as it works the same on linux and windows
         if event.keysym == "Return":
             self.__return_event()
         if self.__stdin.get_display() != "":
@@ -44,51 +50,61 @@ class Console(Window):
                 self.input_end_event()
                 self.__inputting = False
 
+    # Called when an input begins
     def input_begin_event(self):
         pass
 
+    # Called when an input ends
     def input_end_event(self):
         pass
 
+    # Runs every time the return key is pressed, and then calls the exposed return event method that can be overridden
     def __return_event(self):
         stdin = self.__stdin.get_display()
         self.__stdin.set_display("")
         self.prev_input = stdin
         self.return_event()
 
+    # Overrideable method
     def return_event(self):
         pass
 
+    # Append data to the output box
     def stdout_a(self, output):
         display = self.__stdout.get_display()
         display += output + "\n"
         self.__stdout.set_display(display)
 
+    # Overwrite data already in the output box
     def stdout_w(self, output):
         self.__stdout.set_display(output)
 
+    # Get the width, in characters, of the output
     def get_width_chars(self):
         return self.__stdout.winfo_width() // tk_get_fixed_font_width() - 1
 
+    # Get the height, in characters, of the output
     def get_height_chars(self):
         return self.__stdout.winfo_height() // tk_get_fixed_font_height()
 
+    # Get the width, in pixels, of the window
     def get_width(self):
         return self.__stdout.winfo_width()
 
+    # Get the height, in pixels, of the window
     def get_height(self):
         return self.__stdout.winfo_height()
 
+    # Set the text colour of the console
     def set_text_colour(self, colour):
         self.__stdout.configure(foreground=f"#{colour}")
         self.__stdin.configure(foreground=f"#{colour}")
 
+    # Set the background colour of the console
     def set_background_colour(self, colour):
         self.__stdout.configure(background=f"#{colour}")
         self.__stdin.configure(background=f"#{colour}")
 
+    # Set the font size of the console
     def set_font_size(self, font_size):
         tk_fixed_font_size(font_size)
-
-    def main(self):
-        pass
