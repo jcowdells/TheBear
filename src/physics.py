@@ -116,7 +116,7 @@ def remove_item_from_menu(menu_id, menu_list, menu_index, output_pipe):
         return
     menu_interface.set_num_items(menu_interface.get_num_items() - 1)
     # Tell the menu interface there are fewer items
-    if menu_interface.active_index >= menu_interface.get_num_items():
+    if menu_interface.get_active_index() >= menu_interface.get_num_items():
         menu_interface.set_active_index(menu_interface.get_active_index() - 1)
         send_message(output_pipe, Message.MENU_CHANGE_INDEX, (menu_id, menu_interface.get_active_index()))
         # If index is now outside the list, bring it back

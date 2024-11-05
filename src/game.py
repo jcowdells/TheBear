@@ -972,6 +972,11 @@ class Save:
 # Create an array of saves based on json files in a directory
 def saves_array(directory):
     directory = util.abspath(directory)
+
+    # Create the save folder if it doesn't exist
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
     saves = []
     for file in sorted(os.listdir(directory)):
         saves.append(Save.from_file(os.path.join(directory, file), trust_path=True))
