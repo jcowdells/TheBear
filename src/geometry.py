@@ -279,3 +279,28 @@ def lerp_p(a, b, t):
 # Linear interpolation between values
 def lerp_v(a, b, t):
     return a + (b - a) * t
+
+# Create a 2x2 rotation matrix
+def matrix_rotation(angle):
+    sine   = math.sin(angle)
+    cosine = math.cos(angle)
+    return [
+        cosine, -sine,
+        sine, cosine
+    ]
+
+# Multiply a 2D point by a 2x2 matrix
+def matrix_multiply(m, p):
+    return m[0] * p[X] + m[1] * p[Y], m[2] * p[X] + m[3] * p[Y]
+
+def should_clip(p_y, near_clip, far_clip):
+    return p_y < near_clip or p_y > far_clip
+
+def clip_point(a, b, clip_plane):
+    delta_b = b[Y] - clip_plane
+    if delta_b <= 0:
+        return a[X], 0
+    delta_a = clip_plane - a[Y]
+    delta_x = b[X] - a[X]
+    ratio = delta_a / delta_b
+    return a[X] + ratio * delta_x, 0

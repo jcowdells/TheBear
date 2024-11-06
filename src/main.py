@@ -5,9 +5,12 @@ from multiprocessing import Process, Pipe
 import util
 from util import Message
 from render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, Sampler, sampler_array
-from geometry import X, Y, point_rotate, point_transform, point_add, HALF_PI
+from geometry import X, Y, point_rotate, point_transform, point_add, HALF_PI, point_subtract, matrix_rotation, \
+    matrix_multiply, should_clip, clip_point
 from game import DisplayEntity
 from physics import send_message, recv_message, physics_thread, get_by_id, GameState
+
+import cProfile
 
 MAINMENU_ICON_RATIO = 4.72
 MAINMENU_TEXT_DEPTH = 0.333
@@ -46,7 +49,10 @@ class Main(ConsoleGUI):
             "TEXT_COLOUR": "22BB00",
             "BACKGROUND_COLOUR": "000000",
             "FONT_SIZE": 10,
-            "EASTER_EGG": False
+            "EASTER_EGG": False,
+            "FOV": 90,
+            "NEAR_CLIP": 0.1,
+            "FAR_CLIP": 50
         }
         self.__level = None
         self.__entity_list = []
@@ -185,10 +191,11 @@ class Main(ConsoleGUI):
         elif self.__game_state == GameState.GAME:
             if self.__level is not None:
                 self.draw_level(self.__level, focus_centre, focus_rotation)
+                self.draw_3d_level(self.__level, focus_centre, focus_rotation)
 
-            for entity in self.__entity_list:
-                if entity.get_visible():
-                    self.draw_entity(entity, focus_centre, focus_rotation, alpha)
+            #for entity in self.__entity_list:
+            #    if entity.get_visible():
+            #        self.draw_entity(entity, focus_centre, focus_rotation, alpha)
 
         for progress_bar in self.__progress_bar_list:
             if progress_bar.get_visible():
@@ -307,6 +314,46 @@ class Main(ConsoleGUI):
                 self.draw_text(exit_centre, "EXIT", align_x=ALIGN_CENTER, align_y=ALIGN_CENTER, justify=ALIGN_CENTER)
             else:
                 self.draw_line(bound_a, bound_b, fill=outline)
+
+    def draw_3d_level(self, level, centre, rotation):
+        fov = self.__settings["FOV"]
+        near_clip = self.__settings["NEAR_CLIP"]
+        far_clip = self.__settings["FAR_CLIP"]
+
+        rotation_matrix = matrix_rotation(rotation)
+        centred_bounds = []
+        for point in level.get_bounds():
+            point = point_subtract(point, centre)
+            point = matrix_multiply(rotation_matrix, point)
+            centred_bounds.append(point)
+
+        len_bounds = len(centred_bounds)
+        for i in range(len_bounds):
+            bound_a = centred_bounds[i]
+            if i == len_bounds - 1:
+                bound_b = centred_bounds[0]
+            else:
+                bound_b = centred_bounds[i + 1]
+
+            ba_n = bound_a[Y] < near_clip
+            bb_n = bound_b[Y] < near_clip
+            ba_f = bound_a[Y] > far_clip
+            bb_f = bound_b[Y] > far_clip
+
+            if ba_n and bb_n:
+                continue
+            elif ba_f and bb_f:
+                continue
+            elif ba_n:
+                bound_a = clip_point(bound_a, bound_b, near_clip)
+            elif ba_f:
+                bound_a = clip_point(bound_a, bound_b, far_clip)
+            elif bb_n:
+                bound_b = clip_point(bound_b, bound_a, near_clip)
+            elif bb_f:
+                bound_b = clip_point(bound_b, bound_a, far_clip)
+
+            print(bound_a, bound_b)
 
     # Draw a box to the screen
     def draw_box(self, menu_tl, menu_br):
@@ -555,4 +602,5 @@ class Main(ConsoleGUI):
 
 if __name__ == "__main__":
     main_game = Main()
+    #cProfile.run("main_game.begin()")
     main_game.begin()

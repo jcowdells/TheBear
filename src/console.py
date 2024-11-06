@@ -31,10 +31,14 @@ class Console(Window):
         self.prev_input = ""
 
         self.add_key_release_listener(self.__key_release_listener)
+        self.add_configure_listener(self.__configure_listener)
 
         self.__stdin.focus()
         self.__stdin.pack(side=tk.BOTTOM, fill=tk.X)
         self.__stdout.pack(fill=tk.BOTH, expand=tk.TRUE)
+
+        self._font_width = tk_get_fixed_font_width()
+        self._font_height = tk_get_fixed_font_height()
 
     # Called every time a key is released
     def __key_release_listener(self, event):
@@ -49,6 +53,10 @@ class Console(Window):
             if self.__inputting:
                 self.input_end_event()
                 self.__inputting = False
+
+    def __configure_listener(self, _):
+        self._font_width = tk_get_fixed_font_width()
+        self._font_height = tk_get_fixed_font_height()
 
     # Called when an input begins
     def input_begin_event(self):
@@ -81,19 +89,19 @@ class Console(Window):
 
     # Get the width, in characters, of the output
     def get_width_chars(self):
-        return self.__stdout.winfo_width() // tk_get_fixed_font_width() - 1
+        return self._width // self._font_width - 1
 
     # Get the height, in characters, of the output
     def get_height_chars(self):
-        return self.__stdout.winfo_height() // tk_get_fixed_font_height()
+        return self._height // self._font_height
 
     # Get the width, in pixels, of the window
     def get_width(self):
-        return self.__stdout.winfo_width()
+        return self._width
 
     # Get the height, in pixels, of the window
     def get_height(self):
-        return self.__stdout.winfo_height()
+        return self._height
 
     # Set the text colour of the console
     def set_text_colour(self, colour):
@@ -107,4 +115,6 @@ class Console(Window):
 
     # Set the font size of the console
     def set_font_size(self, font_size):
+        self._font_width = tk_get_fixed_font_width()
+        self._font_height = tk_get_fixed_font_height()
         tk_fixed_font_size(font_size)

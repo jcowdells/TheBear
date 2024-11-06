@@ -4,6 +4,8 @@ from console import Console
 from geometry import *
 import util
 
+import numpy as np
+
 ALIGN_LEFT   = 0
 ALIGN_TOP    = 0
 ALIGN_RIGHT  = 1

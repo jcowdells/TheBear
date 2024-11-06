@@ -15,6 +15,8 @@ class Window(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.end)
         self.bind("<Configure>", self.__configure_event)
         self.__running = False
+        self._width = width
+        self._height = height
 
     # Add a key press listener
     def add_key_press_listener(self, listener):
@@ -26,7 +28,7 @@ class Window(tk.Tk):
 
     # Add a configure listener
     def add_configure_listener(self, listener):
-        self.add_configure_listener(listener)
+        self.__configure_listeners.append(listener)
 
     # Private method to handle tkinter key press event
     def __key_press_event(self, event):
@@ -42,6 +44,8 @@ class Window(tk.Tk):
 
     # Private method to handle tkinter configure
     def __configure_event(self, event):
+        self._width = event.width
+        self._height = event.height
         self.configure_event(event)
         for listener in self.__configure_listeners:
             listener(event)
