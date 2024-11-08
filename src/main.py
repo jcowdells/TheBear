@@ -6,7 +6,7 @@ import util
 from util import Message
 from render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, Sampler, sampler_array
 from geometry import X, Y, point_rotate, point_transform, point_add, HALF_PI, point_subtract, matrix_rotation, \
-    matrix_multiply, should_clip, clip_point
+    matrix_multiply, should_clip, clip_point, create_clip_space
 from game import DisplayEntity
 from physics import send_message, recv_message, physics_thread, get_by_id, GameState
 
@@ -320,7 +320,7 @@ class Main(ConsoleGUI):
         near_clip = self.__settings["NEAR_CLIP"]
         far_clip = self.__settings["FAR_CLIP"]
 
-        rotation_matrix = matrix_rotation(rotation)
+        rotation_matrix = matrix_rotation(-rotation)
         centred_bounds = []
         for point in level.get_bounds():
             point = point_subtract(point, centre)
@@ -335,25 +335,12 @@ class Main(ConsoleGUI):
             else:
                 bound_b = centred_bounds[i + 1]
 
-            ba_n = bound_a[Y] < near_clip
-            bb_n = bound_b[Y] < near_clip
-            ba_f = bound_a[Y] > far_clip
-            bb_f = bound_b[Y] > far_clip
+            clip_space = create_clip_space(near_clip, far_clip, fov)
+            bound_a = clip_point(bound_a, clip_space)
+            #bound_b = clip_point(bound_b, clip_space)
 
-            if ba_n and bb_n:
-                continue
-            elif ba_f and bb_f:
-                continue
-            elif ba_n:
-                bound_a = clip_point(bound_a, bound_b, near_clip)
-            elif ba_f:
-                bound_a = clip_point(bound_a, bound_b, far_clip)
-            elif bb_n:
-                bound_b = clip_point(bound_b, bound_a, near_clip)
-            elif bb_f:
-                bound_b = clip_point(bound_b, bound_a, far_clip)
-
-            print(bound_a, bound_b)
+            if -1 <= bound_a[X] <= 1 and -1 <= bound_a[Y] <= 1:
+                print(bound_a)
 
     # Draw a box to the screen
     def draw_box(self, menu_tl, menu_br):

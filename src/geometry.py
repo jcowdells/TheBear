@@ -296,11 +296,25 @@ def matrix_multiply(m, p):
 def should_clip(p_y, near_clip, far_clip):
     return p_y < near_clip or p_y > far_clip
 
-def clip_point(a, b, clip_plane):
-    delta_b = b[Y] - clip_plane
-    if delta_b <= 0:
-        return a[X], 0
-    delta_a = clip_plane - a[Y]
-    delta_x = b[X] - a[X]
-    ratio = delta_a / delta_b
-    return a[X] + ratio * delta_x, 0
+def create_clip_space(near_plane, far_plane, fov):
+    near_width = near_plane * math.tan(fov / 2)
+    far_width = far_plane * math.tan(fov / 2)
+    return near_plane, far_plane, near_width, far_width
+
+def clip_point(p, clip_space):
+    near_plane, far_plane, near_width, far_width = clip_space
+    y_scalar = scalar(near_plane, far_plane, p[Y])
+    y_scalar = max(0, y_scalar)
+    x_width = lerp_v(near_width, far_width, y_scalar)
+    x_scalar = p[X] / x_width
+    y_scalar = n_range(y_scalar)
+    return x_scalar, y_scalar
+
+def n_range(scalar):
+    return (scalar - 0.5) * 2.0
+
+def scalar(min_v, max_v, cur_v):
+    if min_v == max_v:
+        return 0
+    return (cur_v - min_v) / (max_v - min_v)
+
