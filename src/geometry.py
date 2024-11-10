@@ -6,12 +6,18 @@ HALF_PI = math.pi / 2
 
 X = 0
 Y = 1
+Z = 2
+W = 3
 
 U = 0
 V = 1
 
 A = 0
 B = 1
+
+VISIBLE   = 0
+INVISIBLE = 1
+CLIP      = 2
 
 # Find the gradient of a line ax + by + c = 0 from two points
 def line_gradient(a, b):
@@ -38,9 +44,14 @@ def line_bbox(a, b):
     return min_x, min_y, max_x, max_y
 
 # Iterate over points at integer intervals in a line
-def line_iter_points(a, b):
+def line_iter_points(a, b, screen_x, screen_y):
     gx, gy, c = line_gradient(a, b)
     min_x, min_y, max_x, max_y = line_bbox(a, b)
+
+    min_x = max(0, min_x)
+    min_y = max(0, min_y)
+    max_x = min(screen_x - 1, max_x)
+    max_y = min(screen_y - 1, max_y)
 
     if gy == 1:
         for x in range(min_x, max_x + 1):
@@ -280,41 +291,164 @@ def lerp_p(a, b, t):
 def lerp_v(a, b, t):
     return a + (b - a) * t
 
-# Create a 2x2 rotation matrix
-def matrix_rotation(angle):
-    sine   = math.sin(angle)
-    cosine = math.cos(angle)
-    return [
-        cosine, -sine,
-        sine, cosine
-    ]
+# Multiply a 4x4 matrix by a 4d point
+def mat4_multiply(matrix, point):
+    return (
+        point[X] * matrix[0] +  point[Y] * matrix[1] +  point[Z] * matrix[2] +  point[W] * matrix[3],
+        point[X] * matrix[4] +  point[Y] * matrix[5] +  point[Z] * matrix[6] +  point[W] * matrix[7],
+        point[X] * matrix[8] +  point[Y] * matrix[9] +  point[Z] * matrix[10] + point[W] * matrix[11],
+        point[X] * matrix[12] + point[Y] * matrix[13] + point[Z] * matrix[14] + point[W] * matrix[15]
+    )
 
-# Multiply a 2D point by a 2x2 matrix
-def matrix_multiply(m, p):
-    return m[0] * p[X] + m[1] * p[Y], m[2] * p[X] + m[3] * p[Y]
+# Multiply a 3x3 matrix by a 3d point
+def mat3_multiply(matrix, point):
+    return (
+        point[X] * matrix[0] + point[Y] * matrix[1] + point[Z] * matrix[2],
+        point[X] * matrix[3] + point[Y] * matrix[4] + point[Z] * matrix[5],
+        point[X] * matrix[6] + point[Y] * matrix[7] + point[Z] * matrix[8]
+    )
 
-def should_clip(p_y, near_clip, far_clip):
-    return p_y < near_clip or p_y > far_clip
+# Create a 4x4 rotation matrix in the Z axis
+def mat4_rotation_z(angle):
+    sin = math.sin(angle)
+    cos = math.cos(angle)
+    return (
+        cos,  0, sin, 0,
+        0,    1, 0,   0,
+        -sin, 0, cos, 0,
+        0,    0, 0,   1
+    )
 
-def create_clip_space(near_plane, far_plane, fov):
-    near_width = near_plane * math.tan(fov / 2)
-    far_width = far_plane * math.tan(fov / 2)
-    return near_plane, far_plane, near_width, far_width
+# Create a 3x3 translation matrix
+def mat4_translation(t_x, t_y, t_z):
+    return (
+        1, 0, 0, t_x,
+        0, 1, 0, t_y,
+        0, 0, 1, t_z,
+        0, 0, 0, 1
+    )
 
-def clip_point(p, clip_space):
-    near_plane, far_plane, near_width, far_width = clip_space
-    y_scalar = scalar(near_plane, far_plane, p[Y])
-    y_scalar = max(0, y_scalar)
-    x_width = lerp_v(near_width, far_width, y_scalar)
-    x_scalar = p[X] / x_width
-    y_scalar = n_range(y_scalar)
-    return x_scalar, y_scalar
+# Create a 4x4 identity matrix
+def mat4_identity():
+    return (
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+    )
 
-def n_range(scalar):
-    return (scalar - 0.5) * 2.0
+# Create a 4x4 projection matrix
+def mat4_projection(fov, aspect_ratio, near, far):
+    tangent = math.tan(fov / 2)
+    top     = near * tangent
+    right   = top * aspect_ratio
+    delta   = far - near
 
-def scalar(min_v, max_v, cur_v):
-    if min_v == max_v:
-        return 0
-    return (cur_v - min_v) / (max_v - min_v)
+    return (
+        near / right, 0, 0, 0,
+        0, near / top, 0, 0,
+        0, 0, -(far + near) / delta, -1,
+        0, 0, -(2 * far * near) / delta, 0
+    )
 
+def point_perspective_divide(point):
+    return point[X] / point[W], point[Y] / point[W], point[Z] / point[W]
+
+def p_scalar(v):
+    return (v + 1) / 2
+
+def p_scale_point(point):
+    px = p_scalar(point[X])
+    py = p_scalar(point[Y])
+    pz = p_scalar(point[Z])
+    return px, py, pz
+
+def point_to_screen(point, screen_width, screen_height):
+    return round(point[X] * screen_width), round(point[Y] * screen_height), point[Z]
+
+def point_region_code(point):
+    code = 0
+    if point[X] < -point[W]:
+        code |= 1 << 0
+    if point[X] > point[W]:
+        code |= 1 << 1
+    if point[Y] < -point[W]:
+        code |= 1 << 2
+    if point[Y] > point[W]:
+        code |= 1 << 3
+    if point[Z] < -point[W]:
+        code |= 1 << 4
+    if point[Z] > point[W]:
+        code |= 1 << 5
+    return code
+
+def line_visible(a, b):
+    reg_a = point_region_code(a)
+    reg_b = point_region_code(b)
+    if reg_a & reg_b == 0:
+        return CLIP
+    if reg_b | reg_a == 0:
+        return VISIBLE
+    else:
+        return INVISIBLE
+
+def parametric_t(a, b, w):
+    return (w - a) / (b - a)
+
+def parametric_s(a, b, t):
+    return lerp_v(a[X], b[X], t), lerp_v(a[Y], b[Y], t), lerp_v(a[Z], b[Z], t), lerp_v(a[W], b[W], t)
+
+def line_clip(a, b):
+    x = [a[X], b[X]]
+    y = [a[Y], b[Y]]
+    z = [a[Z], b[Z]]
+    w = (a[W], b[W])
+
+    print(a)
+    print(b)
+    print("-----")
+
+    dx = b[X] - a[X]
+    dy = b[Y] - a[Y]
+    dz = b[Z] - a[Z]
+    for i in range(2):
+        v_min = -w[i]
+        v_max = w[i]
+        if x[i] != x[1 - i]:
+            if x[i] < v_min:
+                t = parametric_t(x[i], x[1 - i], v_min)
+                if 0 < t < 1:
+                    x[i] = lerp_v(x[i], x[1 - i], t)
+            elif x[i] > v_max:
+                t = parametric_t(x[i], x[1 - i], v_max)
+                if 0 < t < 1:
+                    x[i] = lerp_v(x[i], x[1 - i], t)
+        if y[i] != y[1 - i]:
+            if y[i] < v_min:
+                t = parametric_t(y[i], y[1 - i], v_min)
+                if 0 < t < 1:
+                    y[i] = lerp_v(y[i], y[1 - i], t)
+            elif y[i] > v_max:
+                t = parametric_t(y[i], y[1 - i], v_max)
+                if 0 < t < 1:
+                    y[i] = lerp_v(y[i], y[1 - i], t)
+        if z[i] != z[1 - i]:
+            if z[i] < v_min:
+                t = parametric_t(z[i], z[1 - i], v_min)
+                if 0 < t < 1:
+                    z[i] = lerp_v(z[i], z[1 - i], t)
+            elif y[i] > v_max:
+                t = parametric_t(z[i], z[1 - i], v_max)
+                if 0 < t < 1:
+                    z[i] = lerp_v(z[i], z[1 - i], t)
+    return (x[0], y[0], z[0], a[W]), (x[1], y[1], z[1], b[W])
+
+def point_clip_to_screen(p, screen_width, screen_height):
+    p = point_perspective_divide(p)
+    p = p_scale_point(p)
+    return point_to_screen(p, screen_width, screen_height)
+
+def line_clip_to_screen(a, b, screen_width, screen_height):
+    a = point_clip_to_screen(a, screen_width, screen_height)
+    b = point_clip_to_screen(b, screen_width, screen_height)
+    return a, b

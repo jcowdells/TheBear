@@ -3,10 +3,12 @@ import time
 import textwrap
 from multiprocessing import Process, Pipe
 import util
+from src.geometry import mat3_multiply, Z, mat4_multiply, mat4_projection, W, \
+    mat4_translation, mat4_rotation_z, point_to_screen, line_visible, INVISIBLE, CLIP, line_clip, \
+    point_perspective_divide, p_scale_point, line_clip_to_screen
 from util import Message
 from render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, Sampler, sampler_array
-from geometry import X, Y, point_rotate, point_transform, point_add, HALF_PI, point_subtract, matrix_rotation, \
-    matrix_multiply, should_clip, clip_point, create_clip_space
+from geometry import X, Y, point_rotate, point_transform, point_add, HALF_PI, point_subtract
 from game import DisplayEntity
 from physics import send_message, recv_message, physics_thread, get_by_id, GameState
 
@@ -50,8 +52,8 @@ class Main(ConsoleGUI):
             "BACKGROUND_COLOUR": "000000",
             "FONT_SIZE": 10,
             "EASTER_EGG": False,
-            "FOV": 90,
-            "NEAR_CLIP": 0.1,
+            "FOV": math.pi / 2,
+            "NEAR_CLIP": 0.5,
             "FAR_CLIP": 50
         }
         self.__level = None
@@ -295,8 +297,8 @@ class Main(ConsoleGUI):
             b = centred_texture_bounds[c2]
             c = centred_texture_bounds[c3]
             d = centred_texture_bounds[c4]
-            self.draw_sampler(a, b, c, (0, 0), (1, 0), (1, 1), sampler)
-            self.draw_sampler(a, c, d, (0, 0), (1, 1), (0, 1), sampler)
+            #self.draw_sampler(a, b, c, (0, 0), (1, 0), (1, 1), sampler)
+            #self.draw_sampler(a, c, d, (0, 0), (1, 1), (0, 1), sampler)
 
         exit_index = level.get_exit_index()
         # Loop through each line
@@ -313,6 +315,7 @@ class Main(ConsoleGUI):
                 exit_centre = exit_centre[X] // 2, exit_centre[Y] // 2
                 self.draw_text(exit_centre, "EXIT", align_x=ALIGN_CENTER, align_y=ALIGN_CENTER, justify=ALIGN_CENTER)
             else:
+                outline="`"
                 self.draw_line(bound_a, bound_b, fill=outline)
 
     def draw_3d_level(self, level, centre, rotation):
@@ -320,27 +323,49 @@ class Main(ConsoleGUI):
         near_clip = self.__settings["NEAR_CLIP"]
         far_clip = self.__settings["FAR_CLIP"]
 
-        rotation_matrix = matrix_rotation(-rotation)
-        centred_bounds = []
+        vertex_buffer = []
+        index_buffer  = []
+
+        translation_matrix = mat4_translation(-centre[X], 0, -centre[Y])
+        rotation_matrix    = mat4_rotation_z(rotation)
+
         for point in level.get_bounds():
-            point = point_subtract(point, centre)
-            point = matrix_multiply(rotation_matrix, point)
-            centred_bounds.append(point)
+            for z in [-1, 1]:
+                vertex = point[X], z, point[Y], 1
+                vertex = mat4_multiply(translation_matrix, vertex)
+                vertex = mat4_multiply(rotation_matrix, vertex)
+                vertex_buffer.append(vertex)
 
-        len_bounds = len(centred_bounds)
-        for i in range(len_bounds):
-            bound_a = centred_bounds[i]
-            if i == len_bounds - 1:
-                bound_b = centred_bounds[0]
+        aspect_ratio = self.get_width_chars() / self.get_height_chars()
+        projection_matrix = mat4_projection(fov, aspect_ratio, near_clip, far_clip)
+        len_bounds = len(vertex_buffer)
+        print(len_bounds)
+        for i in range(len_bounds // 2):
+            point_ab = vertex_buffer[2 * i]
+            point_at = vertex_buffer[2 * i + 1]
+            if 2 * i + 3 >= len_bounds:
+                point_bb = vertex_buffer[0]
+                point_bt = vertex_buffer[1]
             else:
-                bound_b = centred_bounds[i + 1]
+                point_bb = vertex_buffer[2 * i + 2]
+                point_bt = vertex_buffer[2 * i + 3]
 
-            clip_space = create_clip_space(near_clip, far_clip, fov)
-            bound_a = clip_point(bound_a, clip_space)
-            #bound_b = clip_point(bound_b, clip_space)
+            point_ab = mat4_multiply(projection_matrix, point_ab)
+            point_at = mat4_multiply(projection_matrix, point_at)
+            point_bb = mat4_multiply(projection_matrix, point_bb)
+            point_bt = mat4_multiply(projection_matrix, point_bt)
 
-            if -1 <= bound_a[X] <= 1 and -1 <= bound_a[Y] <= 1:
-                print(bound_a)
+            self.draw_3d_line(point_at, point_ab)
+            self.draw_3d_line(point_at, point_bt)
+            self.draw_3d_line(point_ab, point_bb)
+
+    def draw_3d_line(self, a, b, fill="#"):
+        v = line_visible(a, b)
+        if v != INVISIBLE:
+            if v == CLIP:
+                a, b = line_clip(a, b)
+            a, b = line_clip_to_screen(a, b, self.get_width_chars(), self.get_height_chars())
+            self.draw_line(a, b, fill=fill)
 
     # Draw a box to the screen
     def draw_box(self, menu_tl, menu_br):
