@@ -3,8 +3,8 @@ import time
 import textwrap
 from multiprocessing import Process, Pipe
 import util
-from src.geometry import mat3_multiply, Z, mat4_multiply, mat4_projection, W, \
-    mat4_translation, mat4_rotation_z, point_to_screen, line_visible, INVISIBLE, CLIP, line_clip, \
+from src.geometry import Z, mat4_multiply, mat4_projection, W, \
+    mat4_translation, mat4_rotation_z, point_to_screen, INVISIBLE, CLIP, line_clip, \
     point_perspective_divide, p_scale_point, line_clip_to_screen
 from util import Message
 from render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, Sampler, sampler_array
@@ -53,7 +53,7 @@ class Main(ConsoleGUI):
             "FONT_SIZE": 10,
             "EASTER_EGG": False,
             "FOV": math.pi / 2,
-            "NEAR_CLIP": 0.5,
+            "NEAR_CLIP": 0.1,
             "FAR_CLIP": 50
         }
         self.__level = None
@@ -192,7 +192,7 @@ class Main(ConsoleGUI):
             self.draw_main_menu()
         elif self.__game_state == GameState.GAME:
             if self.__level is not None:
-                self.draw_level(self.__level, focus_centre, focus_rotation)
+                #self.draw_level(self.__level, focus_centre, focus_rotation)
                 self.draw_3d_level(self.__level, focus_centre, focus_rotation)
 
             #for entity in self.__entity_list:
@@ -330,7 +330,7 @@ class Main(ConsoleGUI):
         rotation_matrix    = mat4_rotation_z(rotation)
 
         for point in level.get_bounds():
-            for z in [-1, 1]:
+            for z in [-2, 1]:
                 vertex = point[X], z, point[Y], 1
                 vertex = mat4_multiply(translation_matrix, vertex)
                 vertex = mat4_multiply(rotation_matrix, vertex)
@@ -339,7 +339,7 @@ class Main(ConsoleGUI):
         aspect_ratio = self.get_width_chars() / self.get_height_chars()
         projection_matrix = mat4_projection(fov, aspect_ratio, near_clip, far_clip)
         len_bounds = len(vertex_buffer)
-        print(len_bounds)
+        print(time.perf_counter())
         for i in range(len_bounds // 2):
             point_ab = vertex_buffer[2 * i]
             point_at = vertex_buffer[2 * i + 1]
@@ -360,11 +360,9 @@ class Main(ConsoleGUI):
             self.draw_3d_line(point_ab, point_bb)
 
     def draw_3d_line(self, a, b, fill="#"):
-        v = line_visible(a, b)
-        if v != INVISIBLE:
-            if v == CLIP:
-                a, b = line_clip(a, b)
-            a, b = line_clip_to_screen(a, b, self.get_width_chars(), self.get_height_chars())
+        line = line_clip(a, b)
+        if line is not None:
+            a, b = line_clip_to_screen(*line, self.get_width_chars(), self.get_height_chars())
             self.draw_line(a, b, fill=fill)
 
     # Draw a box to the screen

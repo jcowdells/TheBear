@@ -727,6 +727,8 @@ def physics_thread(input_pipe, output_pipe):
                         game_state = game_state_main_menu(text_box_list, progress_bar_list, menu_list, current_save, output_pipe)
                     elif command == "EASTEREGG":
                         send_message(output_pipe, Message.UPDATE_SETTING, ("EASTER_EGG", True))
+                    elif command.split(" ")[0] == "FOV":
+                        send_message(output_pipe, Message.UPDATE_SETTING, ("FOV", float(command.split(" ")[1])))
                     command = None
 
         # In game game state, when game is not paused

@@ -300,14 +300,6 @@ def mat4_multiply(matrix, point):
         point[X] * matrix[12] + point[Y] * matrix[13] + point[Z] * matrix[14] + point[W] * matrix[15]
     )
 
-# Multiply a 3x3 matrix by a 3d point
-def mat3_multiply(matrix, point):
-    return (
-        point[X] * matrix[0] + point[Y] * matrix[1] + point[Z] * matrix[2],
-        point[X] * matrix[3] + point[Y] * matrix[4] + point[Z] * matrix[5],
-        point[X] * matrix[6] + point[Y] * matrix[7] + point[Z] * matrix[8]
-    )
-
 # Create a 4x4 rotation matrix in the Z axis
 def mat4_rotation_z(angle):
     sin = math.sin(angle)
@@ -347,107 +339,99 @@ def mat4_projection(fov, aspect_ratio, near, far):
     return (
         near / right, 0, 0, 0,
         0, near / top, 0, 0,
-        0, 0, -(far + near) / delta, -1,
-        0, 0, -(2 * far * near) / delta, 0
+        0, 0, -(far + near) / delta, -(2 * far * near) / delta,
+        0, 0, -1, 0
     )
 
+# Perform a perspective divide / divide by W
 def point_perspective_divide(point):
+    if point[W] == 0:
+        return 0, 0, 0
     return point[X] / point[W], point[Y] / point[W], point[Z] / point[W]
 
+# Scale a value from range(-1, 1) to range(0, 1)
 def p_scalar(v):
     return (v + 1) / 2
 
+# Scale a coordinate from ranges(-1, 1) to ranges(0, 1)
 def p_scale_point(point):
     px = p_scalar(point[X])
     py = p_scalar(point[Y])
     pz = p_scalar(point[Z])
     return px, py, pz
 
+# Scale a point from ranges(0, 1) to ranges(0, screen_size)
 def point_to_screen(point, screen_width, screen_height):
     return round(point[X] * screen_width), round(point[Y] * screen_height), point[Z]
 
-def point_region_code(point):
+# Compute the boundary coordinates of a point
+def point_boundary_coordinates(point):
+    return (
+        point[W] + point[X],
+        point[W] - point[X],
+        point[W] + point[Y],
+        point[W] - point[Y],
+        point[W] + point[Z],
+        point[W] - point[Z]
+    )
+
+# Compute the region code of a point, where 0=out, 1=in, for +x,-x,+y,-y,+z,-z, as a 6bit binary number
+def point_region_code(bounds):
     code = 0
-    if point[X] < -point[W]:
-        code |= 1 << 0
-    if point[X] > point[W]:
-        code |= 1 << 1
-    if point[Y] < -point[W]:
-        code |= 1 << 2
-    if point[Y] > point[W]:
-        code |= 1 << 3
-    if point[Z] < -point[W]:
-        code |= 1 << 4
-    if point[Z] > point[W]:
-        code |= 1 << 5
+    for i in range(6):
+        if bounds[i] < 0:
+            code |= 1 << i
     return code
 
-def line_visible(a, b):
-    reg_a = point_region_code(a)
-    reg_b = point_region_code(b)
-    if reg_a & reg_b == 0:
-        return CLIP
-    if reg_b | reg_a == 0:
-        return VISIBLE
-    else:
-        return INVISIBLE
-
-def parametric_t(a, b, w):
-    return (w - a) / (b - a)
-
+# Solve a parametric equation of two points, scaling between 0 and 1
 def parametric_s(a, b, t):
     return lerp_v(a[X], b[X], t), lerp_v(a[Y], b[Y], t), lerp_v(a[Z], b[Z], t), lerp_v(a[W], b[W], t)
 
+# Compute the new coordinates of two points making up a line, which are cropped to the camera view volume
 def line_clip(a, b):
-    x = [a[X], b[X]]
-    y = [a[Y], b[Y]]
-    z = [a[Z], b[Z]]
-    w = (a[W], b[W])
+    a_bounds = point_boundary_coordinates(a)
+    b_bounds = point_boundary_coordinates(b)
 
-    print(a)
-    print(b)
-    print("-----")
+    a_region = point_region_code(a_bounds)
+    b_region = point_region_code(b_bounds)
 
-    dx = b[X] - a[X]
-    dy = b[Y] - a[Y]
-    dz = b[Z] - a[Z]
-    for i in range(2):
-        v_min = -w[i]
-        v_max = w[i]
-        if x[i] != x[1 - i]:
-            if x[i] < v_min:
-                t = parametric_t(x[i], x[1 - i], v_min)
-                if 0 < t < 1:
-                    x[i] = lerp_v(x[i], x[1 - i], t)
-            elif x[i] > v_max:
-                t = parametric_t(x[i], x[1 - i], v_max)
-                if 0 < t < 1:
-                    x[i] = lerp_v(x[i], x[1 - i], t)
-        if y[i] != y[1 - i]:
-            if y[i] < v_min:
-                t = parametric_t(y[i], y[1 - i], v_min)
-                if 0 < t < 1:
-                    y[i] = lerp_v(y[i], y[1 - i], t)
-            elif y[i] > v_max:
-                t = parametric_t(y[i], y[1 - i], v_max)
-                if 0 < t < 1:
-                    y[i] = lerp_v(y[i], y[1 - i], t)
-        if z[i] != z[1 - i]:
-            if z[i] < v_min:
-                t = parametric_t(z[i], z[1 - i], v_min)
-                if 0 < t < 1:
-                    z[i] = lerp_v(z[i], z[1 - i], t)
-            elif y[i] > v_max:
-                t = parametric_t(z[i], z[1 - i], v_max)
-                if 0 < t < 1:
-                    z[i] = lerp_v(z[i], z[1 - i], t)
-    return (x[0], y[0], z[0], a[W]), (x[1], y[1], z[1], b[W])
+    if a_region | b_region == 0: # Both points are within all 6 planes
+        return a, b
+    elif a_region & b_region != 0: # Both points are outside of the same plane: not visible
+        return None
 
+    t_in = 0
+    t_out = 1
+    for i in range(6): # For each plane, compute the distance across the line before intersecting
+        if b_bounds[i] < 0:
+            t_hit = a_bounds[i] / (a_bounds[i] - b_bounds[i])
+            t_out = min(t_hit, t_out)
+        elif a_bounds[i] < 0:
+            t_hit = a_bounds[i] / (a_bounds[i] - b_bounds[i])
+            t_in = max(t_hit, t_in)
+        if t_in > t_out: # If left over area is less than 0, not visible
+            return None
+
+    # Update points where necessary
+    if a_region != 0:
+        a_out = parametric_s(a, b, t_in)
+    else:
+        a_out = a
+
+    if b_region != 0:
+        b_out = parametric_s(a, b, t_out)
+    else:
+        b_out = b
+
+    return a_out, b_out
+
+# Convert homogenous point to screen point
 def point_clip_to_screen(p, screen_width, screen_height):
     p = point_perspective_divide(p)
     p = p_scale_point(p)
     return point_to_screen(p, screen_width, screen_height)
 
+# Convert two homogenous points, and return a line with screen coordinates
 def line_clip_to_screen(a, b, screen_width, screen_height):
     a = point_clip_to_screen(a, screen_width, screen_height)
     b = point_clip_to_screen(b, screen_width, screen_height)
