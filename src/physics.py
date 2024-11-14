@@ -761,10 +761,9 @@ def physics_thread(input_pipe, output_pipe):
             # Spawn bear after 30 seconds
             if level_duration >= 30:
                 if not bear_spawned:
-                    pass
-                    #bear_spawned = True
-                    #bear.set_position(level.get_spawnpoint())
-                    #show_entity(bear.get_id(), output_pipe)
+                    bear_spawned = True
+                    bear.set_position(level.get_spawnpoint())
+                    show_entity(bear.get_id(), output_pipe)
             else:
                 hide_entity(bear.get_id(), output_pipe)
 

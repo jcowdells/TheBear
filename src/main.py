@@ -2,10 +2,14 @@ import math
 import time
 import textwrap
 from multiprocessing import Process, Pipe
+
+from launchpadlib.testing.helpers import NoNetworkLaunchpad
+
 import util
 from src.geometry import Z, mat4_multiply, mat4_projection, W, \
     mat4_translation, mat4_rotation_z, point_to_screen, INVISIBLE, CLIP, line_clip, \
-    point_perspective_divide, p_scale_point, line_clip_to_screen, lerp_v
+    point_perspective_divide, p_scale_point, line_clip_to_screen, lerp_v, point_transform_3d, vector_from_angle, \
+    vector_dot, vector_perpendicular, vector_normalise
 from util import Message
 from render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, Sampler, sampler_array
 from geometry import X, Y, point_rotate, point_transform, point_add, HALF_PI, point_subtract, line_gradient, line_solve_y
@@ -53,8 +57,10 @@ class Main(ConsoleGUI):
             "FONT_SIZE": 10,
             "EASTER_EGG": False,
             "FOV": math.pi / 2,
-            "NEAR_CLIP": 1.0,
-            "FAR_CLIP": 50
+            "NEAR_CLIP": 0.01,
+            "FAR_CLIP": 50,
+            "WALL_TOP": 2,
+            "WALL_BOTTOM": -2
         }
         self.__level = None
         self.__entity_list = []
@@ -195,9 +201,9 @@ class Main(ConsoleGUI):
                 #self.draw_level(self.__level, focus_centre, focus_rotation)
                 self.draw_3d_level(self.__level, focus_centre, focus_rotation)
 
-            #for entity in self.__entity_list:
-            #    if entity.get_visible():
-            #        self.draw_entity(entity, focus_centre, focus_rotation, alpha)
+            for entity in self.__entity_list:
+                if entity.get_visible():
+                    self.draw_entity(entity, focus_centre, focus_rotation, alpha)
 
         for progress_bar in self.__progress_bar_list:
             if progress_bar.get_visible():
@@ -322,89 +328,104 @@ class Main(ConsoleGUI):
         fov = self.__settings["FOV"]
         near_clip = self.__settings["NEAR_CLIP"]
         far_clip = self.__settings["FAR_CLIP"]
+        wall_top = self.__settings["WALL_TOP"]
+        wall_bottom = self.__settings["WALL_BOTTOM"]
         aspect_ratio = self.get_width_chars() / self.get_height_chars()
 
+        screen_width = self.get_width_chars()
+        screen_height = self.get_height_chars()
+
         vertex_buffer = []
+        index_group_buffer = []
         line_buffer = []
-        z_buffer = [(0, 999, -1) for _ in range(self.get_width_chars() + 1)]
+        normal_buffer = []
+        y_buffer = [(0, -1) for _ in range(self.get_width_chars() + 1)]
 
         translation_matrix = mat4_translation(-centre[X], 0, -centre[Y])
         rotation_matrix    = mat4_rotation_z(rotation)
         projection_matrix  = mat4_projection(fov, aspect_ratio, near_clip, far_clip)
 
+        matrices = (translation_matrix, rotation_matrix, projection_matrix)
+
+        camera_vector = vector_normalise((1, 3))
+
+        i = 0
         for point in level.get_bounds():
-            for z in [-2, 2]:
-                vertex = point[X], z, point[Y], 1
-                vertex = mat4_multiply(translation_matrix, vertex)
-                vertex = mat4_multiply(rotation_matrix, vertex)
-                vertex = mat4_multiply(projection_matrix, vertex)
-                vertex_buffer.append(vertex)
+            for height in [wall_bottom, 0, wall_top]:
+                vertex_buffer.append(point_transform_3d((point[X], height, point[Y]), *matrices))
+            j = 3 * i
+            index_group_buffer.append((j, j + 1, j + 2, i))
+            i += 1
 
-        len_bounds = len(vertex_buffer)
-        for i in range(len_bounds // 2):
-            point_ab = vertex_buffer[2 * i]
-            point_at = vertex_buffer[2 * i + 1]
-            if 2 * i + 3 >= len_bounds:
-                point_bb = vertex_buffer[0]
-                point_bt = vertex_buffer[1]
-            else:
-                point_bb = vertex_buffer[2 * i + 2]
-                point_bt = vertex_buffer[2 * i + 3]
+        len_indices = len(index_group_buffer)
+        for i in range(len_indices):
+            index_g_a = index_group_buffer[i - 1]
+            index_g_b = index_group_buffer[i]
+            point_ab = vertex_buffer[index_g_a[0]]
+            point_am = vertex_buffer[index_g_a[1]]
+            point_at = vertex_buffer[index_g_a[2]]
+            point_bb = vertex_buffer[index_g_b[0]]
+            point_bm = vertex_buffer[index_g_b[1]]
+            point_bt = vertex_buffer[index_g_b[2]]
 
+            mid_line = line_clip(point_am, point_bm)
+            if mid_line is None: continue
             top_line = line_clip(point_at, point_bt)
-            if top_line is None: continue
             bottom_line = line_clip(point_ab, point_bb)
-            if bottom_line is None: continue
-            sw = self.get_width_chars()
-            sh = self.get_height_chars()
-            top_line_s = line_clip_to_screen(*top_line, sw, sh)
-            bottom_line_s = line_clip_to_screen(*bottom_line, sw, sh)
-            if top_line_s[0][X] < top_line_s[1][X]:
-                min_x = top_line_s[0][X]
-                max_x = top_line_s[1][X]
-                min_z = top_line[0][Z]
-                max_z = top_line[1][Z]
+
+            mid_line_s = line_clip_to_screen(*mid_line, screen_width, screen_height)
+
+            if top_line is None:
+                top_line_g = None
             else:
-                min_x = top_line_s[1][X]
-                max_x = top_line_s[0][X]
-                min_z = top_line[1][Z]
-                max_z = top_line[0][Z]
+                top_line_s = line_clip_to_screen(*top_line, screen_width, screen_height)
+                top_line_g = line_gradient(*top_line_s)
 
-            top_line_g = line_gradient(*top_line_s)
-            bottom_line_g = line_gradient(*bottom_line_s)
+            if bottom_line is None:
+                bottom_line_g = None
+            else:
+                bottom_line_s = line_clip_to_screen(*bottom_line, screen_width, screen_height)
+                bottom_line_g = line_gradient(*bottom_line_s)
 
-            delta = max_x - min_x
+            min_x = min(mid_line_s[0][X], mid_line_s[1][X])
+            max_x = max(mid_line_s[0][X], mid_line_s[1][X])
 
             for x in range(min_x, max_x + 1):
-                if delta != 0:
-                    t = (x - min_x) / delta
+                if top_line_g is None:
+                    y1 = screen_height + 1
                 else:
-                    continue
-                y1 = line_solve_y(x, *top_line_g)
-                y2 = line_solve_y(x, *bottom_line_g)
-                z = lerp_v(min_z, max_z, t)
+                    y1 = line_solve_y(x, *top_line_g)
+                if bottom_line_g is None:
+                    y2 = 0
+                else:
+                    y2 = line_solve_y(x, *bottom_line_g)
                 delta_y = math.fabs(y1 - y2)
-                if delta_y > z_buffer[x][0]:
-                    z_buffer[x] = (delta_y, z, len(line_buffer))
+                if delta_y > y_buffer[x][0]:
+                    y_buffer[x] = (delta_y, len(line_buffer))
 
             line_buffer.append((top_line_g, bottom_line_g))
-
-        print(z_buffer)
+            normal = self.__level.get_normal(i - 1)
+            normal = vector_perpendicular(normal)
+            normal_buffer.append(normal)
 
         for x in range(self.get_width_chars()):
-            line_index = z_buffer[x][2]
+            line_index = y_buffer[x][1]
             if line_index == -1:
                 continue
             top_line, bottom_line = line_buffer[line_index]
-            if top_line[1] == 0:
-                top_y = 0
+            normal = normal_buffer[line_index]
+
+            diffuse = max(math.fabs(vector_dot(normal, camera_vector)), 0)
+
+            if top_line is None or top_line[1] == 0:
+                top_y = screen_height + 1
             else:
                 top_y = round(line_solve_y(x, *top_line))
-            if bottom_line[1] == 0:
-                bottom_y = self.get_height_chars()
+            if bottom_line is None or bottom_line[1] == 0:
+                bottom_y = 0
             else:
                 bottom_y = round(line_solve_y(x, *bottom_line))
-            index = max(3, round(10 * (z_buffer[x][0] / far_clip)))
+            index = max(1, round(9 * diffuse))
             if index < 10:
                 fill = " .-:=+*%#@"[index]
             else:

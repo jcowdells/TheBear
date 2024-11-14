@@ -62,10 +62,12 @@ def line_iter_points(a, b, screen_x, screen_y):
 
 # Given a y coordinate, find the x coordinate
 def line_solve_x(y, mx, my, c):
+    if mx == 0: return 0
     return (-my * y - c) / mx
 
 # Given an x coordinate, find the y coordinate
 def line_solve_y(x, mx, my, c):
+    if my == 0: return 0
     return (-mx * x - c) / my
 
 # Get the perpendicular line to ax + by + x = 0
@@ -359,6 +361,13 @@ def p_scale_point(point):
     py = p_scalar(point[Y])
     pz = p_scalar(point[Z])
     return px, py, pz
+
+def point_transform_3d(point, translation_matrix, rotation_matrix, projection_matrix):
+    vertex = point[X], point[Y], point[Z], 1
+    vertex = mat4_multiply(translation_matrix, vertex)
+    vertex = mat4_multiply(rotation_matrix, vertex)
+    vertex = mat4_multiply(projection_matrix, vertex)
+    return vertex
 
 # Scale a point from ranges(0, 1) to ranges(0, screen_size)
 def point_to_screen(point, screen_width, screen_height):
