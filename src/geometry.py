@@ -55,18 +55,18 @@ def line_iter_points(a, b, screen_x, screen_y):
 
     if gy == 1:
         for x in range(min_x, max_x + 1):
-            yield x, round(line_solve_y(x, gx, c))
+            yield x, round(line_solve_y(x, gx, gy, c))
     elif gx == 1:
         for y in range(min_y, max_y + 1):
-            yield round(line_solve_x(y, gy, c)), y
+            yield round(line_solve_x(y, gx, gy, c)), y
 
 # Given a y coordinate, find the x coordinate
-def line_solve_x(y, m, c):
-    return -m * y - c
+def line_solve_x(y, mx, my, c):
+    return (-my * y - c) / mx
 
 # Given an x coordinate, find the y coordinate
-def line_solve_y(x, m, c):
-    return -m * x - c
+def line_solve_y(x, mx, my, c):
+    return (-mx * x - c) / my
 
 # Get the perpendicular line to ax + by + x = 0
 def line_perpendicular(mx, my, p):

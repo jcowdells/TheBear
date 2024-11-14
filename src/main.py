@@ -5,10 +5,10 @@ from multiprocessing import Process, Pipe
 import util
 from src.geometry import Z, mat4_multiply, mat4_projection, W, \
     mat4_translation, mat4_rotation_z, point_to_screen, INVISIBLE, CLIP, line_clip, \
-    point_perspective_divide, p_scale_point, line_clip_to_screen
+    point_perspective_divide, p_scale_point, line_clip_to_screen, lerp_v
 from util import Message
 from render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, Sampler, sampler_array
-from geometry import X, Y, point_rotate, point_transform, point_add, HALF_PI, point_subtract
+from geometry import X, Y, point_rotate, point_transform, point_add, HALF_PI, point_subtract, line_gradient, line_solve_y
 from game import DisplayEntity
 from physics import send_message, recv_message, physics_thread, get_by_id, GameState
 
@@ -53,7 +53,7 @@ class Main(ConsoleGUI):
             "FONT_SIZE": 10,
             "EASTER_EGG": False,
             "FOV": math.pi / 2,
-            "NEAR_CLIP": 0.1,
+            "NEAR_CLIP": 1.0,
             "FAR_CLIP": 50
         }
         self.__level = None
@@ -315,31 +315,32 @@ class Main(ConsoleGUI):
                 exit_centre = exit_centre[X] // 2, exit_centre[Y] // 2
                 self.draw_text(exit_centre, "EXIT", align_x=ALIGN_CENTER, align_y=ALIGN_CENTER, justify=ALIGN_CENTER)
             else:
-                outline="`"
+                outline="#"
                 self.draw_line(bound_a, bound_b, fill=outline)
 
     def draw_3d_level(self, level, centre, rotation):
         fov = self.__settings["FOV"]
         near_clip = self.__settings["NEAR_CLIP"]
         far_clip = self.__settings["FAR_CLIP"]
+        aspect_ratio = self.get_width_chars() / self.get_height_chars()
 
         vertex_buffer = []
-        index_buffer  = []
+        line_buffer = []
+        z_buffer = [(0, 999, -1) for _ in range(self.get_width_chars() + 1)]
 
         translation_matrix = mat4_translation(-centre[X], 0, -centre[Y])
         rotation_matrix    = mat4_rotation_z(rotation)
+        projection_matrix  = mat4_projection(fov, aspect_ratio, near_clip, far_clip)
 
         for point in level.get_bounds():
-            for z in [-2, 1]:
+            for z in [-2, 2]:
                 vertex = point[X], z, point[Y], 1
                 vertex = mat4_multiply(translation_matrix, vertex)
                 vertex = mat4_multiply(rotation_matrix, vertex)
+                vertex = mat4_multiply(projection_matrix, vertex)
                 vertex_buffer.append(vertex)
 
-        aspect_ratio = self.get_width_chars() / self.get_height_chars()
-        projection_matrix = mat4_projection(fov, aspect_ratio, near_clip, far_clip)
         len_bounds = len(vertex_buffer)
-        print(time.perf_counter())
         for i in range(len_bounds // 2):
             point_ab = vertex_buffer[2 * i]
             point_at = vertex_buffer[2 * i + 1]
@@ -350,14 +351,71 @@ class Main(ConsoleGUI):
                 point_bb = vertex_buffer[2 * i + 2]
                 point_bt = vertex_buffer[2 * i + 3]
 
-            point_ab = mat4_multiply(projection_matrix, point_ab)
-            point_at = mat4_multiply(projection_matrix, point_at)
-            point_bb = mat4_multiply(projection_matrix, point_bb)
-            point_bt = mat4_multiply(projection_matrix, point_bt)
+            top_line = line_clip(point_at, point_bt)
+            if top_line is None: continue
+            bottom_line = line_clip(point_ab, point_bb)
+            if bottom_line is None: continue
+            sw = self.get_width_chars()
+            sh = self.get_height_chars()
+            top_line_s = line_clip_to_screen(*top_line, sw, sh)
+            bottom_line_s = line_clip_to_screen(*bottom_line, sw, sh)
+            if top_line_s[0][X] < top_line_s[1][X]:
+                min_x = top_line_s[0][X]
+                max_x = top_line_s[1][X]
+                min_z = top_line[0][Z]
+                max_z = top_line[1][Z]
+            else:
+                min_x = top_line_s[1][X]
+                max_x = top_line_s[0][X]
+                min_z = top_line[1][Z]
+                max_z = top_line[0][Z]
 
-            self.draw_3d_line(point_at, point_ab)
-            self.draw_3d_line(point_at, point_bt)
-            self.draw_3d_line(point_ab, point_bb)
+            top_line_g = line_gradient(*top_line_s)
+            bottom_line_g = line_gradient(*bottom_line_s)
+
+            delta = max_x - min_x
+
+            for x in range(min_x, max_x + 1):
+                if delta != 0:
+                    t = (x - min_x) / delta
+                else:
+                    continue
+                y1 = line_solve_y(x, *top_line_g)
+                y2 = line_solve_y(x, *bottom_line_g)
+                z = lerp_v(min_z, max_z, t)
+                delta_y = math.fabs(y1 - y2)
+                if delta_y > z_buffer[x][0]:
+                    z_buffer[x] = (delta_y, z, len(line_buffer))
+
+            line_buffer.append((top_line_g, bottom_line_g))
+
+        print(z_buffer)
+
+        for x in range(self.get_width_chars()):
+            line_index = z_buffer[x][2]
+            if line_index == -1:
+                continue
+            top_line, bottom_line = line_buffer[line_index]
+            if top_line[1] == 0:
+                top_y = 0
+            else:
+                top_y = round(line_solve_y(x, *top_line))
+            if bottom_line[1] == 0:
+                bottom_y = self.get_height_chars()
+            else:
+                bottom_y = round(line_solve_y(x, *bottom_line))
+            index = max(3, round(10 * (z_buffer[x][0] / far_clip)))
+            if index < 10:
+                fill = " .-:=+*%#@"[index]
+            else:
+                fill = " "
+            self.draw_column(x, bottom_y, top_y, fill=fill)
+
+    def draw_3d_wall(self, top_line, bottom_line, line_index, z_buffer):
+        pass
+
+        bottom_line = (*line_clip_to_screen(*bottom_line, sw, sh), bottom_line[Z])
+
 
     def draw_3d_line(self, a, b, fill="#"):
         line = line_clip(a, b)

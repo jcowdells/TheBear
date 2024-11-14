@@ -135,6 +135,12 @@ class ConsoleGUI(Console):
         for x, y in line_iter_points(a, b, self.get_width_chars(), self.get_height_chars()):
             self._buffer.try_set(x, y, fill)
 
+    # Draw a column of symbols
+    def draw_column(self, x, y1, y2, fill="#"):
+        fill = ord(fill)
+        for y in range(y1, y2 + 1):
+            self._buffer.try_set(x, y, fill)
+
     # Draw a triangle using barycentric coordinates
     def draw_triangle(self, a, b, c, fill="#"):
         min_x, min_y, max_x, max_y = triangle_bbox(a, b, c)
