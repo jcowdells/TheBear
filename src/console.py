@@ -24,7 +24,7 @@ class Console(Window):
         super().__init__(x, y, width, height, "Console window")
         tk_fixed_font_size(font_size)
 
-        self.__stdout = Text(self, bg=bg, fg=fg, font_name="TkFixedFont")
+        self.__stdout = ColourText(self, bg=bg, fg=fg, font_name="TkFixedFont")
         self.__stdin = Input(self, bg=bg, fg=fg, font_name="TkFixedFont")
 
         self.__inputting = False
@@ -86,6 +86,9 @@ class Console(Window):
     # Overwrite data already in the output box
     def stdout_w(self, output):
         self.__stdout.set_display(output)
+
+    def set_colour(self, index, colour):
+        self.__stdout.set_colour(index, colour)
 
     # Get the width, in characters, of the output
     def get_width_chars(self):
