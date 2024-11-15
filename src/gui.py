@@ -88,9 +88,19 @@ class Window(tk.Tk):
     def main(self):
         pass
 
+class Displayable:
+    def set_display(sel, display):
+        pass
+
+    def get_display(self):
+        return None
+
+    def get_display_obj(self):
+        return None
+
 # Class that handles tkinter objects that require a StringVar, and allows them to be accessed directory
 # Basically avoids Class.get_string_var().set_value() or something
-class Displayable:
+class StringVarDisplayable(Displayable):
     # Init method, create the string var
     def __init__(self, *args, **kwargs):
         self.__display = tk.StringVar()
@@ -108,15 +118,45 @@ class Displayable:
         return self.__display
 
 # Wrapper class for tkinter labels
-class Text(Displayable, tk.Label):
-    def __init__(self, root, bg="white", fg="black", font_name="TkFixedFont"):
-        Displayable.__init__(self)
+class Text(StringVarDisplayable, tk.Label):
+    def __init__(self, root, bg="black", fg="white", font_name="TkFixedFont"):
+        StringVarDisplayable.__init__(self)
         tk.Label.__init__(self, root, textvariable=self.get_display_obj(), bg=bg, fg=fg, font=font_name,
                           anchor=tk.NW, justify=tk.LEFT)
 
 # Wrapper class for tkinter entries
-class Input(Displayable, tk.Entry):
-    def __init__(self, root, bg="white", fg="black", font_name="TkFixedFont"):
-        Displayable.__init__(self)
+class Input(StringVarDisplayable, tk.Entry):
+    def __init__(self, root, bg="black", fg="white", font_name="TkFixedFont"):
+        StringVarDisplayable.__init__(self)
         tk.Entry.__init__(self, root, textvariable=self.get_display_obj(), bg=bg, fg=fg, font=font_name,
                           borderwidth=0, highlightthickness=0)
+
+class ColourText(Displayable, tk.Text):
+    def __init__(self, root, bg="black", fg="white", font_name="TkFixedFont"):
+        tk.Text.__init__(self, root, bg=bg, fg=fg, font=font_name, borderwidth=0, highlightthickness=0)
+        self.config(state=tk.NORMAL)
+        self.__length = 0
+        self.__display = ""
+
+    def clear_display(self):
+        if self.__length > 0:
+            self.delete(1.0, tk.END)
+
+    def set_display(self, display):
+        self.clear_display()
+        self.insert(tk.INSERT, display)
+        self.__length = len(display)
+        self.__display = display
+
+    def get_display(self):
+        return self.__display
+
+    def create_tag(self, index):
+        tag_name = str(index)
+        self.tag_delete(tag_name)
+        self.tag_add(tag_name, f"1.{index}", f"1.{index + 1}")
+        return tag_name
+
+    def set_colour(self, index, colour):
+        tag_name = self.create_tag(index)
+        self.tag_configure(tag_name, foreground=colour)

@@ -4,8 +4,6 @@ from console import Console
 from geometry import *
 import util
 
-import numpy as np
-
 ALIGN_LEFT   = 0
 ALIGN_TOP    = 0
 ALIGN_RIGHT  = 1
@@ -134,7 +132,14 @@ class ConsoleGUI(Console):
     # Draw a line between two points
     def draw_line(self, a, b, fill="#"):
         fill = ord(fill)
-        for x, y in line_iter_points(a, b):
+        for x, y in line_iter_points(a, b, self.get_width_chars(), self.get_height_chars()):
+            self._buffer.try_set(x, y, fill)
+
+    # Draw a column of symbols
+    def draw_column(self, x, y1, y2, fill="#"):
+        self.set_colour(x, "#FF0000")
+        fill = ord(fill)
+        for y in range(y1, y2 + 1):
             self._buffer.try_set(x, y, fill)
 
     # Draw a triangle using barycentric coordinates

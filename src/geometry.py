@@ -6,12 +6,18 @@ HALF_PI = math.pi / 2
 
 X = 0
 Y = 1
+Z = 2
+W = 3
 
 U = 0
 V = 1
 
 A = 0
 B = 1
+
+VISIBLE   = 0
+INVISIBLE = 1
+CLIP      = 2
 
 # Find the gradient of a line ax + by + c = 0 from two points
 def line_gradient(a, b):
@@ -38,24 +44,31 @@ def line_bbox(a, b):
     return min_x, min_y, max_x, max_y
 
 # Iterate over points at integer intervals in a line
-def line_iter_points(a, b):
+def line_iter_points(a, b, screen_x, screen_y):
     gx, gy, c = line_gradient(a, b)
     min_x, min_y, max_x, max_y = line_bbox(a, b)
 
+    min_x = max(0, min_x)
+    min_y = max(0, min_y)
+    max_x = min(screen_x - 1, max_x)
+    max_y = min(screen_y - 1, max_y)
+
     if gy == 1:
         for x in range(min_x, max_x + 1):
-            yield x, round(line_solve_y(x, gx, c))
+            yield x, round(line_solve_y(x, gx, gy, c))
     elif gx == 1:
         for y in range(min_y, max_y + 1):
-            yield round(line_solve_x(y, gy, c)), y
+            yield round(line_solve_x(y, gx, gy, c)), y
 
 # Given a y coordinate, find the x coordinate
-def line_solve_x(y, m, c):
-    return -m * y - c
+def line_solve_x(y, mx, my, c):
+    if mx == 0: return 0
+    return (-my * y - c) / mx
 
 # Given an x coordinate, find the y coordinate
-def line_solve_y(x, m, c):
-    return -m * x - c
+def line_solve_y(x, mx, my, c):
+    if my == 0: return 0
+    return (-mx * x - c) / my
 
 # Get the perpendicular line to ax + by + x = 0
 def line_perpendicular(mx, my, p):
@@ -280,27 +293,155 @@ def lerp_p(a, b, t):
 def lerp_v(a, b, t):
     return a + (b - a) * t
 
-# Create a 2x2 rotation matrix
-def matrix_rotation(angle):
-    sine   = math.sin(angle)
-    cosine = math.cos(angle)
-    return [
-        cosine, -sine,
-        sine, cosine
-    ]
+# Multiply a 4x4 matrix by a 4d point
+def mat4_multiply(matrix, point):
+    return (
+        point[X] * matrix[0] +  point[Y] * matrix[1] +  point[Z] * matrix[2] +  point[W] * matrix[3],
+        point[X] * matrix[4] +  point[Y] * matrix[5] +  point[Z] * matrix[6] +  point[W] * matrix[7],
+        point[X] * matrix[8] +  point[Y] * matrix[9] +  point[Z] * matrix[10] + point[W] * matrix[11],
+        point[X] * matrix[12] + point[Y] * matrix[13] + point[Z] * matrix[14] + point[W] * matrix[15]
+    )
 
-# Multiply a 2D point by a 2x2 matrix
-def matrix_multiply(m, p):
-    return m[0] * p[X] + m[1] * p[Y], m[2] * p[X] + m[3] * p[Y]
+# Create a 4x4 rotation matrix in the Z axis
+def mat4_rotation_z(angle):
+    sin = math.sin(angle)
+    cos = math.cos(angle)
+    return (
+        cos,  0, sin, 0,
+        0,    1, 0,   0,
+        -sin, 0, cos, 0,
+        0,    0, 0,   1
+    )
 
-def should_clip(p_y, near_clip, far_clip):
-    return p_y < near_clip or p_y > far_clip
+# Create a 3x3 translation matrix
+def mat4_translation(t_x, t_y, t_z):
+    return (
+        1, 0, 0, t_x,
+        0, 1, 0, t_y,
+        0, 0, 1, t_z,
+        0, 0, 0, 1
+    )
 
-def clip_point(a, b, clip_plane):
-    delta_b = b[Y] - clip_plane
-    if delta_b <= 0:
-        return a[X], 0
-    delta_a = clip_plane - a[Y]
-    delta_x = b[X] - a[X]
-    ratio = delta_a / delta_b
-    return a[X] + ratio * delta_x, 0
+# Create a 4x4 identity matrix
+def mat4_identity():
+    return (
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        0, 0, 0, 1
+    )
+
+# Create a 4x4 projection matrix
+def mat4_projection(fov, aspect_ratio, near, far):
+    tangent = math.tan(fov / 2)
+    top     = near * tangent
+    right   = top * aspect_ratio
+    delta   = far - near
+
+    return (
+        near / right, 0, 0, 0,
+        0, near / top, 0, 0,
+        0, 0, -(far + near) / delta, -(2 * far * near) / delta,
+        0, 0, -1, 0
+    )
+
+# Perform a perspective divide / divide by W
+def point_perspective_divide(point):
+    if point[W] == 0:
+        return 0, 0, 0
+    return point[X] / point[W], point[Y] / point[W], point[Z] / point[W]
+
+# Scale a value from range(-1, 1) to range(0, 1)
+def p_scalar(v):
+    return (v + 1) / 2
+
+# Scale a coordinate from ranges(-1, 1) to ranges(0, 1)
+def p_scale_point(point):
+    px = p_scalar(point[X])
+    py = p_scalar(point[Y])
+    pz = p_scalar(point[Z])
+    return px, py, pz
+
+def point_transform_3d(point, translation_matrix, rotation_matrix, projection_matrix):
+    vertex = point[X], point[Y], point[Z], 1
+    vertex = mat4_multiply(translation_matrix, vertex)
+    vertex = mat4_multiply(rotation_matrix, vertex)
+    vertex = mat4_multiply(projection_matrix, vertex)
+    return vertex
+
+# Scale a point from ranges(0, 1) to ranges(0, screen_size)
+def point_to_screen(point, screen_width, screen_height):
+    return round(point[X] * screen_width), round(point[Y] * screen_height), point[Z]
+
+# Compute the boundary coordinates of a point
+def point_boundary_coordinates(point):
+    return (
+        point[W] + point[X],
+        point[W] - point[X],
+        point[W] + point[Y],
+        point[W] - point[Y],
+        point[W] + point[Z],
+        point[W] - point[Z]
+    )
+
+# Compute the region code of a point, where 0=out, 1=in, for +x,-x,+y,-y,+z,-z, as a 6bit binary number
+def point_region_code(bounds):
+    code = 0
+    for i in range(6):
+        if bounds[i] < 0:
+            code |= 1 << i
+    return code
+
+# Solve a parametric equation of two points, scaling between 0 and 1
+def parametric_s(a, b, t):
+    return lerp_v(a[X], b[X], t), lerp_v(a[Y], b[Y], t), lerp_v(a[Z], b[Z], t), lerp_v(a[W], b[W], t)
+
+# Compute the new coordinates of two points making up a line, which are cropped to the camera view volume
+def line_clip(a, b):
+    a_bounds = point_boundary_coordinates(a)
+    b_bounds = point_boundary_coordinates(b)
+
+    a_region = point_region_code(a_bounds)
+    b_region = point_region_code(b_bounds)
+
+    if a_region | b_region == 0: # Both points are within all 6 planes
+        return a, b
+    elif a_region & b_region != 0: # Both points are outside of the same plane: not visible
+        return None
+
+    t_in = 0
+    t_out = 1
+    for i in range(6): # For each plane, compute the distance across the line before intersecting
+        if b_bounds[i] < 0:
+            t_hit = a_bounds[i] / (a_bounds[i] - b_bounds[i])
+            t_out = min(t_hit, t_out)
+        elif a_bounds[i] < 0:
+            t_hit = a_bounds[i] / (a_bounds[i] - b_bounds[i])
+            t_in = max(t_hit, t_in)
+        if t_in > t_out: # If left over area is less than 0, not visible
+            return None
+
+    # Update points where necessary
+    if a_region != 0:
+        a_out = parametric_s(a, b, t_in)
+    else:
+        a_out = a
+
+    if b_region != 0:
+        b_out = parametric_s(a, b, t_out)
+    else:
+        b_out = b
+
+    return a_out, b_out
+
+# Convert homogenous point to screen point
+def point_clip_to_screen(p, screen_width, screen_height):
+    p = point_perspective_divide(p)
+    p = p_scale_point(p)
+    return point_to_screen(p, screen_width, screen_height)
+
+# Convert two homogenous points, and return a line with screen coordinates
+def line_clip_to_screen(a, b, screen_width, screen_height):
+    a = point_clip_to_screen(a, screen_width, screen_height)
+    b = point_clip_to_screen(b, screen_width, screen_height)
+    return a, b

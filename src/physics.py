@@ -727,6 +727,8 @@ def physics_thread(input_pipe, output_pipe):
                         game_state = game_state_main_menu(text_box_list, progress_bar_list, menu_list, current_save, output_pipe)
                     elif command == "EASTEREGG":
                         send_message(output_pipe, Message.UPDATE_SETTING, ("EASTER_EGG", True))
+                    elif command.split(" ")[0] == "FOV":
+                        send_message(output_pipe, Message.UPDATE_SETTING, ("FOV", float(command.split(" ")[1])))
                     command = None
 
         # In game game state, when game is not paused
@@ -759,10 +761,9 @@ def physics_thread(input_pipe, output_pipe):
             # Spawn bear after 30 seconds
             if level_duration >= 30:
                 if not bear_spawned:
-                    pass
-                    #bear_spawned = True
-                    #bear.set_position(level.get_spawnpoint())
-                    #show_entity(bear.get_id(), output_pipe)
+                    bear_spawned = True
+                    bear.set_position(level.get_spawnpoint())
+                    show_entity(bear.get_id(), output_pipe)
             else:
                 hide_entity(bear.get_id(), output_pipe)
 
