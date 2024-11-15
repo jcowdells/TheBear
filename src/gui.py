@@ -1,3 +1,4 @@
+import tkinter
 import tkinter as tk
 
 # A subclass of Tkinter window, trying to make as many layers of abstraction from tkinter as possible
@@ -137,26 +138,34 @@ class ColourText(Displayable, tk.Text):
         self.config(state=tk.NORMAL)
         self.__length = 0
         self.__display = ""
+        self.__colours = []
+
+    def __run_display_func(self, display_func, *args, **kwargs):
+        self.configure(state=tk.NORMAL)
+        display_func(*args, **kwargs)
+        self.configure(state=tk.DISABLED)
 
     def clear_display(self):
         if self.__length > 0:
-            self.delete(1.0, tk.END)
+            self.__run_display_func(self.delete, 1.0, tk.END)
 
     def set_display(self, display):
         self.clear_display()
-        self.insert(tk.INSERT, display)
+        self.__run_display_func(self.insert, tk.END, display)
+        for colour in self.__colours:
+            self.__set_colour(*colour)
+        self.__colours.clear()
         self.__length = len(display)
         self.__display = display
 
     def get_display(self):
         return self.__display
 
-    def create_tag(self, index):
-        tag_name = str(index)
+    def __set_colour(self, x, y, colour):
+        tag_name = str(f"{x}{y}")
         self.tag_delete(tag_name)
-        self.tag_add(tag_name, f"1.{index}", f"1.{index + 1}")
-        return tag_name
-
-    def set_colour(self, index, colour):
-        tag_name = self.create_tag(index)
         self.tag_configure(tag_name, foreground=colour)
+        self.tag_add(tag_name, f"{y + 1}.{x + 1}", f"{y + 1}.{x + 2}")
+
+    def set_colour(self, x, y, colour):
+        self.__colours.append((x, y, colour))

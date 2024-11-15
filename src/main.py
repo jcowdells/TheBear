@@ -3,13 +3,11 @@ import time
 import textwrap
 from multiprocessing import Process, Pipe
 
-from launchpadlib.testing.helpers import NoNetworkLaunchpad
-
 import util
 from src.geometry import Z, mat4_multiply, mat4_projection, W, \
     mat4_translation, mat4_rotation_z, point_to_screen, INVISIBLE, CLIP, line_clip, \
     point_perspective_divide, p_scale_point, line_clip_to_screen, lerp_v, point_transform_3d, vector_from_angle, \
-    vector_dot, vector_perpendicular, vector_normalise
+    vector_dot, vector_perpendicular, vector_normalise, vector_from_points, vector_angle, vector_multiply
 from util import Message
 from render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, Sampler, sampler_array
 from geometry import X, Y, point_rotate, point_transform, point_add, HALF_PI, point_subtract, line_gradient, line_solve_y
@@ -197,13 +195,25 @@ class Main(ConsoleGUI):
         if self.__game_state == GameState.MAIN_MENU:
             self.draw_main_menu()
         elif self.__game_state == GameState.GAME:
+            fov          = self.__settings["FOV"]
+            near_clip    = self.__settings["NEAR_CLIP"]
+            far_clip     = self.__settings["FAR_CLIP"]
+            aspect_ratio = self.get_width_chars() / self.get_height_chars()
+
+            z_buffer = [far_clip for _ in range(self.get_width_chars() + 1)]
+
+            translation_matrix = mat4_translation(-focus_centre[X], 0, -focus_centre[Y])
+            rotation_matrix    = mat4_rotation_z(focus_rotation)
+            projection_matrix  = mat4_projection(fov, aspect_ratio, near_clip, far_clip)
+
             if self.__level is not None:
                 #self.draw_level(self.__level, focus_centre, focus_rotation)
-                self.draw_3d_level(self.__level, focus_centre, focus_rotation)
+                self.draw_3d_level(self.__level, translation_matrix, rotation_matrix, projection_matrix, z_buffer)
 
             for entity in self.__entity_list:
-                if entity.get_visible():
-                    self.draw_entity(entity, focus_centre, focus_rotation, alpha)
+                if entity.get_id() != self.__focus_id and entity.get_visible():
+                    self.draw_3d_entity(entity, focus_centre, alpha,
+                                        translation_matrix, rotation_matrix, projection_matrix, z_buffer)
 
         for progress_bar in self.__progress_bar_list:
             if progress_bar.get_visible():
@@ -324,13 +334,10 @@ class Main(ConsoleGUI):
                 outline="#"
                 self.draw_line(bound_a, bound_b, fill=outline)
 
-    def draw_3d_level(self, level, centre, rotation):
-        fov = self.__settings["FOV"]
-        near_clip = self.__settings["NEAR_CLIP"]
+    def draw_3d_level(self, level, translation_matrix, rotation_matrix, projection_matrix, z_buffer):
         far_clip = self.__settings["FAR_CLIP"]
         wall_top = self.__settings["WALL_TOP"]
         wall_bottom = self.__settings["WALL_BOTTOM"]
-        aspect_ratio = self.get_width_chars() / self.get_height_chars()
 
         screen_width = self.get_width_chars()
         screen_height = self.get_height_chars()
@@ -339,11 +346,7 @@ class Main(ConsoleGUI):
         index_group_buffer = []
         line_buffer = []
         normal_buffer = []
-        y_buffer = [(0, -1) for _ in range(self.get_width_chars() + 1)]
-
-        translation_matrix = mat4_translation(-centre[X], 0, -centre[Y])
-        rotation_matrix    = mat4_rotation_z(rotation)
-        projection_matrix  = mat4_projection(fov, aspect_ratio, near_clip, far_clip)
+        y_buffer = [(0, -1) for _ in range(screen_width + 1)]
 
         matrices = (translation_matrix, rotation_matrix, projection_matrix)
 
@@ -374,6 +377,9 @@ class Main(ConsoleGUI):
             bottom_line = line_clip(point_ab, point_bb)
 
             mid_line_s = line_clip_to_screen(*mid_line, screen_width, screen_height)
+            mid_line_a = (mid_line_s[0][X], point_am[Z])
+            mid_line_b = (mid_line_s[1][X], point_bm[Z])
+            mid_line_g = line_gradient(mid_line_a, mid_line_b)
 
             if top_line is None:
                 top_line_g = None
@@ -400,8 +406,12 @@ class Main(ConsoleGUI):
                 else:
                     y2 = line_solve_y(x, *bottom_line_g)
                 delta_y = math.fabs(y1 - y2)
+
+                z = line_solve_y(x, *mid_line_g)
+
                 if delta_y > y_buffer[x][0]:
                     y_buffer[x] = (delta_y, len(line_buffer))
+                    z_buffer[x] = z
 
             line_buffer.append((top_line_g, bottom_line_g))
             normal = self.__level.get_normal(i - 1)
@@ -432,11 +442,84 @@ class Main(ConsoleGUI):
                 fill = " "
             self.draw_column(x, bottom_y, top_y, fill=fill)
 
-    def draw_3d_wall(self, top_line, bottom_line, line_index, z_buffer):
-        pass
+    def draw_3d_entity(self, entity, centre, alpha, translation_matrix, rotation_matrix, projection_matrix, z_buffer):
+        entity_centre  = entity.get_position(alpha)
+        entity_size    = entity.get_size()
+        entity_sampler = entity.get_sampler()
 
-        bottom_line = (*line_clip_to_screen(*bottom_line, sw, sh), bottom_line[Z])
+        rotation_vector = vector_from_points(entity_centre, centre)
+        rotation_vector = vector_normalise(rotation_vector)
+        rotation_vector = vector_perpendicular(rotation_vector)
 
+        entity_l = vector_multiply(rotation_vector, entity_size)
+        entity_l = point_add(entity_centre, entity_l)
+
+        entity_r = vector_multiply(rotation_vector, -entity_size)
+        entity_r = point_add(entity_centre, entity_r)
+
+        entity_tl = (entity_l[X], entity_size, entity_l[Y])
+        entity_tl = point_transform_3d(entity_tl, translation_matrix, rotation_matrix, projection_matrix)
+
+        entity_tr = (entity_r[X], entity_size, entity_r[Y])
+        entity_tr = point_transform_3d(entity_tr, translation_matrix, rotation_matrix, projection_matrix)
+
+        entity_ml = (entity_l[X], 0, entity_l[Y])
+        entity_ml = point_transform_3d(entity_ml, translation_matrix, rotation_matrix, projection_matrix)
+
+        entity_mr = (entity_r[X], 0, entity_r[Y])
+        entity_mr = point_transform_3d(entity_mr, translation_matrix, rotation_matrix, projection_matrix)
+
+        entity_bl = (entity_l[X], -entity_size, entity_l[Y])
+        entity_bl = point_transform_3d(entity_bl, translation_matrix, rotation_matrix, projection_matrix)
+
+        entity_br = (entity_r[X], -entity_size, entity_r[Y])
+        entity_br = point_transform_3d(entity_br, translation_matrix, rotation_matrix, projection_matrix)
+
+        mid_line = line_clip(entity_ml, entity_mr)
+        if mid_line is None: return
+
+        top_line = line_clip(entity_tl, entity_tr)
+        bottom_line = line_clip(entity_bl, entity_br)
+
+        screen_width = self.get_width_chars()
+        screen_height = self.get_height_chars()
+
+        mid_line = line_clip_to_screen(*mid_line, screen_width, screen_height)
+
+        if top_line is None:
+            top_line_g = None
+        else:
+            top_line = line_clip_to_screen(*top_line, screen_width, screen_height)
+            top_line_g = line_gradient(*top_line)
+
+        if bottom_line is None:
+            bottom_line_g = None
+        else:
+            bottom_line = line_clip_to_screen(*bottom_line, screen_width, screen_height)
+            bottom_line_g = line_gradient(*bottom_line)
+
+        min_x = round(min(mid_line[0][X], mid_line[1][X]))
+        max_x = round(max(mid_line[0][X], mid_line[1][X]))
+
+        mid_line_g = line_gradient((mid_line[0][X], entity_ml[Z]), (mid_line[1][X], entity_mr[Z]))
+
+        for x in range(min_x, max_x + 1):
+            z = line_solve_y(x, *mid_line_g)
+
+            if z_buffer[x] < z:
+                continue
+
+            if top_line_g is None:
+                top_y = screen_height + 1
+            else:
+                top_y = round(line_solve_y(x, *top_line_g))
+
+            if bottom_line_g is None:
+                bottom_y = 0
+            else:
+                bottom_y = round(line_solve_y(x, *bottom_line_g))
+
+            self.draw_column(x, bottom_y, top_y, fill="^")
 
     def draw_3d_line(self, a, b, fill="#"):
         line = line_clip(a, b)
@@ -691,5 +774,5 @@ class Main(ConsoleGUI):
 
 if __name__ == "__main__":
     main_game = Main()
-    #cProfile.run("main_game.begin()")
-    main_game.begin()
+    cProfile.run("main_game.begin()")
+    #main_game.begin()

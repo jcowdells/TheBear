@@ -137,7 +137,6 @@ class ConsoleGUI(Console):
 
     # Draw a column of symbols
     def draw_column(self, x, y1, y2, fill="#"):
-        self.set_colour(x, "#FF0000")
         fill = ord(fill)
         for y in range(y1, y2 + 1):
             self._buffer.try_set(x, y, fill)

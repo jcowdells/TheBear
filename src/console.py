@@ -18,13 +18,23 @@ def tk_get_fixed_font_height():
 
 # A console window, uses the Window class, and adds the output and input areas
 class Console(Window):
+    MONO   = 0
+    COLOUR = 1
     # Create the console with a width, height, and x, y position
     # The font size and colours can also be set.
-    def __init__(self, width, height, x, y, font_size, bg="#000000", fg="#FFFFFF"):
+    def __init__(self, width, height, x, y, font_size, bg="#000000", fg="#FFFFFF", mode=MONO):
         super().__init__(x, y, width, height, "Console window")
         tk_fixed_font_size(font_size)
 
-        self.__stdout = ColourText(self, bg=bg, fg=fg, font_name="TkFixedFont")
+        if mode == Console.COLOUR:
+            self.__stdout = ColourText(self, bg=bg, fg=fg, font_name="TkFixedFont")
+            self.__stdout.tag_configure("test", foreground="red")
+            self.__stdout.tag_add("test", "1.1", "1.10")
+        else:
+            self.__stdout = Text(self, bg=bg, fg=fg, font_name="TkFixedFont")
+
+        self.__mode = mode
+
         self.__stdin = Input(self, bg=bg, fg=fg, font_name="TkFixedFont")
 
         self.__inputting = False
@@ -87,8 +97,9 @@ class Console(Window):
     def stdout_w(self, output):
         self.__stdout.set_display(output)
 
-    def set_colour(self, index, colour):
-        self.__stdout.set_colour(index, colour)
+    def set_colour(self, x, y, colour):
+        if hasattr(self.__stdout, "set_colour"):
+            self.__stdout.set_colour(x, y, colour)
 
     # Get the width, in characters, of the output
     def get_width_chars(self):
