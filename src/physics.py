@@ -1,4 +1,5 @@
 import json
+import math
 import time
 import random
 
@@ -218,18 +219,11 @@ def hide_all_progress_bars(progress_bar_list, output_pipe):
     for progress_bar in progress_bar_list:
         hide_progress_bar(progress_bar, output_pipe)
 
-# Tell main to show level information such as gold collected and time remaining
-def show_information(output_pipe):
-    send_message(output_pipe, Message.UPDATE_SETTING, ("DISPLAY_INFO", True))
-
-# Tell main to hide the information
-def hide_information(output_pipe):
-    send_message(output_pipe, Message.UPDATE_SETTING, ("DISPLAY_INFO", False))
-
 # Tell main to update the information it is displaying
-def update_information(time_remaining, collected_gold, output_pipe):
+def update_information(time_remaining, collected_gold, health, held_item, output_pipe):
     send_message(output_pipe, Message.UPDATE_SETTING, ("TIME_REMAINING", time_remaining))
     send_message(output_pipe, Message.UPDATE_SETTING, ("COLLECTED_GOLD", collected_gold))
+    send_message(output_pipe, Message.UPDATE_PLAYER_DATA, (time_remaining, collected_gold, health, held_item))
 
 # Tell main to kill all entities in a list
 def kill_level_entities(entity_list, level_entity_list, output_pipe):
@@ -721,6 +715,7 @@ def physics_thread(input_pipe, output_pipe):
                             kill_entity(held_entity.get_id(), entity_list, output_pipe)
                             honey_spill = create_entity(HoneySpill, entity_list, output_pipe, position, rotation)
                             level_entity_list.append(honey_spill.get_id())
+                            held_entity = None
                     elif command == "STEAL":
                         player_steal = True
                     elif command == "QUIT":
@@ -737,8 +732,7 @@ def physics_thread(input_pipe, output_pipe):
             level_duration += delta
             player_steal_info_time += delta
 
-            update_information(max(0, round(30 - level_duration)), player_gold, output_pipe)
-            show_information(output_pipe) # Show game statistics
+            update_information(max(0, round(30 - level_duration)), player_gold, 1.0, "<none>", output_pipe)
 
             # Display 30s warning for first 2 seconds
             if level_duration <= 2:

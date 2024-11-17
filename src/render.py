@@ -141,6 +141,24 @@ class ConsoleGUI(Console):
         for y in range(y1, y2 + 1):
             self._buffer.try_set(x, y, fill)
 
+    def draw_sampler_column(self, x, x1, x2, y1, y2, sampler):
+        if x2 - x1 == 0:
+            u = 0
+        else:
+            u = (x - x1) / (x2 - x1)
+
+        if y2 - y1 == 0:
+            delta_y = 1
+        else:
+            delta_y = y2 - y1
+
+        for y in range(y1, y2 + 1):
+            v = (y - y1) / delta_y
+            fill = sampler.sample(u, v)
+            if fill != ord(" "):
+                self._buffer.try_set(x, y, fill)
+
+
     # Draw a triangle using barycentric coordinates
     def draw_triangle(self, a, b, c, fill="#"):
         min_x, min_y, max_x, max_y = triangle_bbox(a, b, c)

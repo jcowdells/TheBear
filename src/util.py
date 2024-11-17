@@ -32,6 +32,7 @@ class Message(Enum):
     PROGRESS_BAR_CREATED = auto()
     PROGRESS_BAR_VISIBLE = auto()
     PROGRESS_BAR_UPDATE  = auto()
+    UPDATE_PLAYER_DATA   = auto()
 
 # Get the root directory of the project
 ROOT_DIRECTORY = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))

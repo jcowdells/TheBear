@@ -116,6 +116,9 @@ class Entity:
 
     GRABBABLE = False
 
+    CAN_DIE = False
+    MAX_HEALTH = 0
+
     # Initialise a base entity class from a position, rotation and size
     # Protected variables used so that it's easier to make subclasses
     def __init__(self, position, rotation, hitbox_radius):
@@ -125,6 +128,7 @@ class Entity:
         self._rotation = rotation
         self._hitbox_radius = hitbox_radius
         self._square_radius = hitbox_radius * hitbox_radius
+        self._health = self.MAX_HEALTH
 
         if self.ANIMATION_PATH is None:
             self._animation = EmptyAnimation()
@@ -233,6 +237,24 @@ class Entity:
     def get_animation(self):
         return self._animation
 
+    def is_dead(self):
+        return self.CAN_DIE and self._health <= 0
+
+    def damage(self, damage):
+        self._health -= damage
+
+    def heal(self, health):
+        self._health += health
+
+    def restore_health(self):
+        self._health = self.MAX_HEALTH
+
+    def get_health_scalar(self):
+        return self._health / self.MAX_HEALTH
+
+    def get_health(self):
+        return self._health
+
 # A container for data about an entity, that is stored outside the physics thread
 class DisplayEntity:
     SPRITE        = 0
@@ -333,6 +355,37 @@ class Player(Entity):
     def hold_entity(self, entity):
         vector = vector_from_angle(self._rotation + math.pi, self._hitbox_radius + entity.get_hitbox_radius())
         entity.set_position(point_add(self._position, vector))
+
+class PlayerData:
+    def __init__(self, time_remaining, gold_collected, health, held_item):
+        self.__time_remaining = time_remaining
+        self.__gold_collected = gold_collected
+        self.__health = health
+        self.__held_item = held_item
+
+    def get_time_remaining(self):
+        return self.__time_remaining
+
+    def set_time_remaining(self, time_remaining):
+        self.__time_remaining = time_remaining
+
+    def get_gold_collected(self):
+        return self.__gold_collected
+
+    def set_gold_collected(self, gold_collected):
+        self.__gold_collected = gold_collected
+
+    def get_health(self):
+        return self.__health
+
+    def set_health(self, health):
+        self.__health = health
+
+    def get_held_item(self):
+        return self.__held_item
+
+    def set_held_item(self, held_item):
+        self.__held_item = held_item
 
 # A subclass of entity that represents a bear
 class Bear(Entity):

@@ -11,7 +11,7 @@ from src.geometry import Z, mat4_multiply, mat4_projection, W, \
 from util import Message
 from render import ConsoleGUI, ALIGN_LEFT, ALIGN_CENTER, ALIGN_TOP, ALIGN_RIGHT, Sampler, sampler_array
 from geometry import X, Y, point_rotate, point_transform, point_add, HALF_PI, point_subtract, line_gradient, line_solve_y
-from game import DisplayEntity
+from game import DisplayEntity, PlayerData, ProgressBar
 from physics import send_message, recv_message, physics_thread, get_by_id, GameState
 
 import cProfile
@@ -19,6 +19,13 @@ import cProfile
 MAINMENU_ICON_RATIO = 4.72
 MAINMENU_TEXT_DEPTH = 0.333
 MAINMENU_MAX_DEPTH  = 0.922
+
+CROSSHAIR_SIZE = 0.02
+
+GUI_MIN = 0.06
+GUI_MAX = 0.12
+GUI_RAISED_WIDTH = 0.33
+GUI_HEALTH_WIDTH = 0.25
 
 # The main class, contains game renderer and window functions etc
 class Main(ConsoleGUI):
@@ -58,9 +65,12 @@ class Main(ConsoleGUI):
             "NEAR_CLIP": 0.01,
             "FAR_CLIP": 50,
             "WALL_TOP": 2,
-            "WALL_BOTTOM": -2
+            "WALL_BOTTOM": -2,
+            "CAMERA_HEIGHT": 0
         }
         self.__level = None
+        self.__player_data = PlayerData(0, 0, 0, "")
+        self.__health_bar = ProgressBar((0, 0), GUI_HEALTH_WIDTH)
         self.__entity_list = []
         self.__menu_list = []
         self.__text_box_list = []
@@ -175,6 +185,12 @@ class Main(ConsoleGUI):
                     progress_bar_id, visible = data
                     progress_bar = get_by_id(progress_bar_id, self.__progress_bar_list)
                     progress_bar.set_visible(visible)
+                elif message == Message.UPDATE_PLAYER_DATA:
+                    time_remaining, gold_collected, health, held_item = data
+                    self.__player_data.set_time_remaining(time_remaining)
+                    self.__player_data.set_gold_collected(gold_collected)
+                    self.__player_data.set_health(health)
+                    self.__player_data.set_held_item(held_item)
             except EOFError:
                 # Only happens when X is pressed, and physics thread closes before main
                 return
@@ -215,6 +231,9 @@ class Main(ConsoleGUI):
                     self.draw_3d_entity(entity, focus_centre, alpha,
                                         translation_matrix, rotation_matrix, projection_matrix, z_buffer)
 
+            self.draw_crosshair()
+            self.draw_game_gui()
+
         for progress_bar in self.__progress_bar_list:
             if progress_bar.get_visible():
                 self.draw_progress_bar(progress_bar, focus_centre, focus_rotation)
@@ -232,14 +251,6 @@ class Main(ConsoleGUI):
         width_chars = self.get_width_chars() - 1
         if self.__settings["DISPLAY_FPS"]:
             self.draw_text((width_chars, y), f"FPS: {round(fps)}",
-                           align_x=ALIGN_RIGHT, align_y=ALIGN_TOP, justify=ALIGN_RIGHT)
-
-        if self.__settings["DISPLAY_INFO"]:
-            y += 1
-            self.draw_text((width_chars, y), f"Time remaining: {self.__settings['TIME_REMAINING']}",
-                           align_x=ALIGN_RIGHT, align_y=ALIGN_TOP, justify=ALIGN_RIGHT)
-            y += 1
-            self.draw_text((width_chars, y), f"Collected gold: {self.__settings['COLLECTED_GOLD']}",
                            align_x=ALIGN_RIGHT, align_y=ALIGN_TOP, justify=ALIGN_RIGHT)
 
         self.swap_buffers()
@@ -435,7 +446,7 @@ class Main(ConsoleGUI):
                 bottom_y = 0
             else:
                 bottom_y = round(line_solve_y(x, *bottom_line))
-            index = max(1, round(9 * diffuse))
+            index = max(1, round(5 * diffuse))
             if index < 10:
                 fill = " .-:=+*%#@"[index]
             else:
@@ -445,7 +456,10 @@ class Main(ConsoleGUI):
     def draw_3d_entity(self, entity, centre, alpha, translation_matrix, rotation_matrix, projection_matrix, z_buffer):
         entity_centre  = entity.get_position(alpha)
         entity_size    = entity.get_size()
-        entity_sampler = entity.get_sampler()
+        if self.__settings["EASTER_EGG"]:
+            entity_sampler = self.__easter_egg_sampler
+        else:
+            entity_sampler = entity.get_sampler()
 
         rotation_vector = vector_from_points(entity_centre, centre)
         rotation_vector = vector_normalise(rotation_vector)
@@ -519,13 +533,68 @@ class Main(ConsoleGUI):
             else:
                 bottom_y = round(line_solve_y(x, *bottom_line_g))
 
-            self.draw_column(x, bottom_y, top_y, fill="^")
+            self.draw_sampler_column(x, min_x, max_x, bottom_y, top_y, entity_sampler)
+
+    def draw_crosshair(self):
+        screen_width = self.get_width_chars()
+        screen_height = self.get_height_chars()
+
+        aspect_ratio = self.get_width() / self.get_height()
+
+        crosshair_size_x = round(screen_width * CROSSHAIR_SIZE / aspect_ratio)
+        crosshair_size_y = round(screen_height * CROSSHAIR_SIZE)
+
+        mid_x = screen_width // 2
+        mid_y = screen_height // 2
+        for x in range(mid_x - crosshair_size_x, mid_x + crosshair_size_x + 1):
+            self.draw_character((x, mid_y), fill="-")
+        for y in range(mid_y - crosshair_size_y, mid_y + crosshair_size_y + 1):
+            self.draw_character((mid_x, y), fill="|")
+        self.draw_character((mid_x, mid_y), fill="+")
 
     def draw_3d_line(self, a, b, fill="#"):
         line = line_clip(a, b)
         if line is not None:
             a, b = line_clip_to_screen(*line, self.get_width_chars(), self.get_height_chars())
             self.draw_line(a, b, fill=fill)
+
+    def draw_game_gui(self):
+        screen_width = self.get_width_chars()
+        screen_height = self.get_height_chars()
+
+        gui_min_y = round(screen_height * (1 - GUI_MIN))
+        gui_max_y = round(screen_height * (1 - GUI_MAX))
+
+        x_diff = screen_width * ((1 - GUI_RAISED_WIDTH) / 2)
+        gui_min_x = round(x_diff)
+        gui_max_x = round(screen_width - x_diff)
+
+        self.draw_rectangle((0, gui_min_y), (screen_width, screen_height), fill=" ")
+        self.draw_line((0, gui_min_y), (screen_width, gui_min_y), fill="_")
+        self.draw_rectangle((gui_min_x, gui_max_y), (gui_max_x, gui_min_y), fill=" ")
+        self.draw_line((gui_min_x, gui_max_y), (gui_max_x, gui_max_y), fill="_")
+
+        delta_y = gui_min_y - gui_max_y
+        for i in range(delta_y):
+            self.draw_column(gui_min_x - i, gui_max_y + i + 1, gui_min_y, fill=" ")
+            self.draw_column(gui_max_x + i, gui_max_y + i + 1, gui_min_y, fill=" ")
+            self.draw_character((gui_min_x - i, gui_max_y + i + 1), fill="/")
+            self.draw_character((gui_max_x + i, gui_max_y + i + 1), fill="\\")
+
+        self.__health_bar.set_position((screen_width // 2 - 1, (gui_min_y + gui_max_y) // 2 + 1))
+        self.__health_bar.set_progress(self.__player_data.get_health())
+        self.__health_bar.set_visible(True)
+        self.draw_progress_bar_raw(self.__health_bar)
+
+        text_height = (gui_min_y + screen_height) // 2
+
+        game_info = f"TIME LEFT: {self.__player_data.get_time_remaining()} | GOLD: {self.__player_data.get_gold_collected()}"
+        self.draw_text((1, text_height), game_info,
+                       align_x=ALIGN_LEFT, align_y=ALIGN_TOP, justify=ALIGN_LEFT)
+
+        player_info = f"HOLDING: {self.__player_data.get_held_item()}"
+        self.draw_text((screen_width - 1, text_height), player_info,
+                       align_x=ALIGN_RIGHT, align_y=ALIGN_TOP, justify=ALIGN_RIGHT)
 
     # Draw a box to the screen
     def draw_box(self, menu_tl, menu_br):
@@ -596,15 +665,22 @@ class Main(ConsoleGUI):
             text_tl = box_tl[X] + 2, box_tl[Y] + 4
             self.draw_text(text_tl, display, align_x=ALIGN_LEFT, align_y=ALIGN_TOP, justify=ALIGN_LEFT)
 
-    # Draw a progress bar
-    def draw_progress_bar(self, progress_bar, centre, rotation):
+    def __progress_bar_text(self, progress_bar):
         width = round(self.get_width_chars() * progress_bar.get_width())
         num_chars = width - 2
         num_chars_filled = round(num_chars * progress_bar.get_progress())
         num_chars_blank = num_chars - num_chars_filled
-        display = "[" + "#" * num_chars_filled + " " * num_chars_blank + "]"
+        return "[" + "#" * num_chars_filled + " " * num_chars_blank + "]"
+
+    # Draw a progress bar
+    def draw_progress_bar(self, progress_bar, centre, rotation):
+        display = self.__progress_bar_text(progress_bar)
         position = self.transform_point(progress_bar.get_position(), centre, rotation)
         self.draw_text(position, display, align_x=ALIGN_CENTER, align_y=ALIGN_CENTER, justify=ALIGN_CENTER)
+
+    def draw_progress_bar_raw(self, progress_bar):
+        display = self.__progress_bar_text(progress_bar)
+        self.draw_text(progress_bar.get_position(), display, align_x=ALIGN_CENTER, align_y=ALIGN_CENTER, justify=ALIGN_CENTER)
 
     # Draw a menu
     def draw_menu(self, menu):
@@ -774,5 +850,5 @@ class Main(ConsoleGUI):
 
 if __name__ == "__main__":
     main_game = Main()
-    cProfile.run("main_game.begin()")
-    #main_game.begin()
+    #cProfile.run("main_game.begin()")
+    main_game.begin()
